@@ -63,7 +63,7 @@ mkdir -p actual # else kar will fail
 ${bin_dir}/kar --extract ${RUN} --directory actual/${TEST_CASE_ID} || exit 3
 
 # check loaded QC meta
-if [ "$NO_LOADED_QC" == "" ] ; then
+if [ "$NO_LOADED_QC" = "" ] ; then
     ${bin_dir}/kdbmeta -u actual/${TEST_CASE_ID} -TSEQUENCE QC \
                                  > actual/${TEST_CASE_ID}.orig.all || exit 4
     grep -v '<timestamp>' actual/${TEST_CASE_ID}.orig.all \
@@ -90,7 +90,7 @@ ${bin_dir}/${read_filter_redact} -F${FLT} actual/${TEST_CASE_ID} \
                                                   > /dev/null 2>&1 || exit 8
 
 # QC did not change
-if [ "$NO_LOADED_QC" == "" ] ; then
+if [ "$NO_LOADED_QC" = "" ] ; then
     ${bin_dir}/kdbmeta -u actual/${TEST_CASE_ID} -TSEQUENCE QC \
                                       > actual/${TEST_CASE_ID}.all || exit 9
     ${DIFF} actual/${TEST_CASE_ID}.all actual/${TEST_CASE_ID}.orig.all
@@ -124,7 +124,7 @@ if [ "$rc" != "0" ] ; then
 fi
 
 # compate original history meta with loaded
-if [ "$NO_LOADED_QC" == "" ] ; then
+if [ "$NO_LOADED_QC" = "" ] ; then
    LOADED=$(xmllint --noblanks --xpath /QC/current \
        actual/${TEST_CASE_ID}.orig.all | sed 's/ //g')
    ORIGINAL=$(xmllint --noblanks --xpath /QC/history/event_1/original \
@@ -148,10 +148,10 @@ if [ "$CURRENT" != "$CMP" ] ; then
     echo "current/timestamp($CURRENT) != removed/timestamp($CMP)"
     exit 18
 fi
-if [ "$NO_LOADED_QC" == "" ] ; then
+if [ "$NO_LOADED_QC" = "" ] ; then
 # current/timestamp needs to change
   CMP=$(xmllint --xpath /QC/current/timestamp $F)
-  if [ "$T_LOADED" == "$CMP" ] ; then
+  if [ "$T_LOADED" = "$CMP" ] ; then
     echo "loaded timestamp($T_LOADED) == QC/current/timestamp($CMP)"
     exit 19
   fi
