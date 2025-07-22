@@ -51,6 +51,21 @@ sh -c "ls ${DIRTOTEST}/read-filter-redact${EXE}>/dev/null 2>&1 && ${Python3_EXEC
 		COMMAND test-history.sh ${DIRTOTEST} read-filter-redact Test_Read_filter_redact_3
 		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} )
 
+	# 2 spots, each with one read
+	add_test( NAME Test_Read_filter_redact_two_spots_qc
+		COMMAND sh test-qc.sh ${DIRTOTEST} read-filter-redact 2spots
+		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} )
+
+	# 2 spots, each with one reds, no loaded QC meta
+	add_test( NAME Test_Read_filter_redact_no_qc
+		COMMAND sh test-qc.sh ${DIRTOTEST} read-filter-redact no_qc NO_QC
+		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} )
+
+	# 2 spots, each has 2 reads
+	add_test( NAME Test_Read_filter_redact_two_reads_qc
+		COMMAND sh test-qc.sh ${DIRTOTEST} read-filter-redact 2reads
+		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} )
+
 	if( TARGET read-filter-redact-asan )
 		add_test( NAME Test_Read_filter_redact-asan
 			COMMAND test-history.sh ${DIRTOTEST} read-filter-redact-asan Test_Read_filter_redact_1
