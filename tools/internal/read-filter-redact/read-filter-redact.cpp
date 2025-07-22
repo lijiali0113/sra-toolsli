@@ -971,6 +971,7 @@ static rc_t add_meta_node(KMDataNode* current,
 }
 
 static rc_t record_fp(KMDataNode* node, const Fingerprint& fp) {
+    static string tm;
     rc_t rc = add_meta_node(node, "algorithm", fp.algorithm());
     if (rc == 0)
         rc = add_meta_node(node, "digest", fp.digest());
@@ -981,8 +982,10 @@ static rc_t record_fp(KMDataNode* node, const Fingerprint& fp) {
     if (rc == 0)
         rc = add_meta_node(node, "version", fp.version());
     if (rc == 0) {
-        time_t t = time(nullptr);
-        string tm((const char*)&t, sizeof(t));
+        if (tm.empty()) {
+            time_t t = time(nullptr);
+            tm = string((const char*) & t, sizeof t);
+        }
         rc = add_meta_node(node, "timestamp", tm);
     }
 
