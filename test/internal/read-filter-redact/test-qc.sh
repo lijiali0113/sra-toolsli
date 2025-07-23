@@ -61,6 +61,8 @@ rm -fr actual/${TEST_CASE_ID}
 # prepare sources
 mkdir -p actual # else kar will fail
 ${bin_dir}/kar --extract ${RUN} --directory actual/${TEST_CASE_ID} || exit 3
+# lock the run to verify that read-filter-redact can unlock it
+${bin_dir}/vdb-lock actual/${TEST_CASE_ID} || exit 3
 
 # check loaded QC meta
 if [ "$NO_LOADED_QC" = "" ] ; then
