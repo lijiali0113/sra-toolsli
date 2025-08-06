@@ -24,7 +24,6 @@
 *
 */
 
-#include "copycat-priv.h"
 #include "cctree-priv.h"
 #include <klib/rc.h>
 #include <klib/log.h>

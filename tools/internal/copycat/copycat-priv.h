@@ -120,6 +120,15 @@ rc_t ccat_md5 ( CCTree *tree, const struct KFile *sf, KTime_t mtime,
 rc_t ccat_buf ( CCTree *tree, const struct KFile *sf, KTime_t mtime,
                 enum CCType ntype, CCFileNode *node, const char *name);
 
+struct cc_collector;
+
+rc_t cc_collector_make( struct cc_collector** self );
+
+rc_t cc_collector_add_container_node( struct cc_collector * self, CCContainerNode * container_node );
+rc_t cc_collector_add_arc_file_node( struct cc_collector * self, CCArcFileNode * arc_file_node );
+rc_t cc_collector_add_file_node( struct cc_collector * self, CCFileNode * file_node );
+
+rc_t cc_collector_free( struct cc_collector * self );
 
 /* -----
  * copycat
@@ -128,7 +137,8 @@ rc_t ccat_buf ( CCTree *tree, const struct KFile *sf, KTime_t mtime,
  * All before this function is called is building toward this.
  */
 struct VPath;
-rc_t copycat (CCTree *tree, KTime_t mtime, KDirectory * cwd,
+rc_t copycat ( struct cc_collector * collector,
+               CCTree *tree, KTime_t mtime, KDirectory * cwd,
               const struct VPath * src, const struct KFile *sf, 
               const struct VPath * dst, struct KFile *df,
               const char *spath, const char *name, 

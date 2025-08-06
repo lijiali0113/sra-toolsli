@@ -1704,7 +1704,9 @@ rc_t copycat_add_dec (const copycat_pb * ppb)
  *
  * We then
  */
-rc_t copycat (CCTree *tree, KTime_t mtime, KDirectory * _cwd,
+struct cc_collector;
+rc_t copycat( struct cc_collector * collector,
+              CCTree *tree, KTime_t mtime, KDirectory * _cwd,
               const VPath * src, const KFile *sf,
               const VPath * dst,  KFile *df,
               const char *spath, const char *name,

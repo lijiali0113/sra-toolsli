@@ -417,7 +417,8 @@ OptDef Options[] =
 /* file2file
  */
 static
-rc_t copycat_file2file (CCTree * tree,
+rc_t copycat_file2file( struct cc_collector * collector,
+                        CCTree * tree,
                         SLList * logs,
                         VFSManager * mgr,
                         VPath * _src,
@@ -635,7 +636,8 @@ rc_t copycat_file2file (CCTree * tree,
                                                                " do_encrypt(%d))\n\n", __func__,
                                                                tree, mtime, cwd, _src, sf, _dst, df, spath,
                                                                xpath, expected, do_decrypt, do_encrypt));
-                                                rc = copycat (tree, mtime, cwd, _src, sf, _dst, df, spath,
+                                                /* copycat is in cccat.c */
+                                                rc = copycat( collector, tree, mtime, cwd, _src, sf, _dst, df, spath,
                                                               xpath, expected, do_decrypt, do_encrypt);
 
                                                 orc = copycat_log_unset();
@@ -668,8 +670,8 @@ rc_t copycat_file2file (CCTree * tree,
 /* files2dir
  */
 static
-rc_t copycat_files2dir (CCTree * tree, SLList * logs, VFSManager * mgr, Vector * v, VPath * dst)
-{
+rc_t copycat_files2dir( struct cc_collector * collector,
+                        CCTree * tree, SLList * logs, VFSManager * mgr, Vector * v, VPath * dst ) {
     size_t dz;
     uint32_t ix;
     rc_t rc;
@@ -744,7 +746,7 @@ rc_t copycat_files2dir (CCTree * tree, SLList * logs, VFSManager * mgr, Vector *
         }
 
         /* do this one file copy and catalog now */
-        rc = copycat_file2file (tree, logs, mgr, src, new_dst, xml_base ? xml_base : sleaf);
+        rc = copycat_file2file( collector, tree, logs, mgr, src, new_dst, xml_base ? xml_base : sleaf );
 
         VPathRelease (new_dst);
     }
@@ -758,9 +760,10 @@ rc_t copycat_files2dir (CCTree * tree, SLList * logs, VFSManager * mgr, Vector *
  *
  */
 static
-rc_t copycat_run ( CCTree *tree, SLList * logs, VFSManager * mgr,
-                   const char *cache, VPath * _dest, const char *extract,
-                   Vector * v)
+rc_t copycat_run( struct cc_collector * collector,
+                  CCTree *tree, SLList * logs, VFSManager * mgr,
+                  const char *cache, VPath * _dest, const char *extract,
+                  Vector * v )
 {
     rc_t rc = 0;
     int dest_type = kptNotFound;
@@ -861,7 +864,7 @@ rc_t copycat_run ( CCTree *tree, SLList * logs, VFSManager * mgr,
 /* )) */
             && (VectorLength (v) == 1))
         {
-            rc = copycat_file2file (tree, logs, mgr, VectorGet (v, 0), dest, pleaf);
+            rc = copycat_file2file( collector, tree, logs, mgr, VectorGet (v, 0), dest, pleaf ); /* >>>>> MEAT #1 <<<<< */
             goto CLEANUP;
         }
 
@@ -872,7 +875,7 @@ rc_t copycat_run ( CCTree *tree, SLList * logs, VFSManager * mgr,
 
         /* fall through */
     case kptDir:
-        rc = copycat_files2dir (tree, logs, mgr, v, dest);
+        rc = copycat_files2dir( collector, tree, logs, mgr, v, dest ); /* >>>>> MEAT #2 <<<<< */
         goto CLEANUP;
 
 
@@ -887,7 +890,7 @@ rc_t copycat_run ( CCTree *tree, SLList * logs, VFSManager * mgr,
             if (VectorLength (v) > 1)
 #endif
             {
-                rc = copycat_files2dir (tree, logs, mgr, v, dest);
+                rc = copycat_files2dir( collector, tree, logs, mgr, v, dest ); /* >>>>> MEAT #3 <<<<< */
                 goto CLEANUP;
             }
         }
@@ -896,7 +899,7 @@ rc_t copycat_run ( CCTree *tree, SLList * logs, VFSManager * mgr,
     case kptFIFO:
     case kptFile:
         if (VectorLength (v) == 1) {
-            rc = copycat_file2file (tree, logs, mgr, VectorGet (v, 0), dest, pleaf);
+            rc = copycat_file2file( collector, tree, logs, mgr, VectorGet (v, 0), dest, pleaf ); /* >>>>> MEAT #4 <<<<< */
             goto CLEANUP;
         }
         rc = RC (rcExe, rcDirectory, rcAccessing, rcPath, rcNotFound);
@@ -943,6 +946,7 @@ MAIN_DECL( argc, argv )
 
     Args * args;
     rc_t rc, orc;
+    struct cc_collector * collector = NULL;
 
     SetUsage( Usage );
     SetUsageSummary( UsageSummary );
@@ -951,6 +955,10 @@ MAIN_DECL( argc, argv )
     KStsLibHandlerSetStdErr();
 
     rc = ArgsMakeAndHandle (&args, argc, argv, 1, Options, sizeof Options / sizeof (OptDef));
+    /* VDB6009 fix memory-leak in case of compressed input-file */
+    if ( rc == 0 ) {
+        rc = cc_collector_make( &collector );
+    }
     if (rc == 0)
     {
         do
@@ -1223,8 +1231,9 @@ MAIN_DECL( argc, argv )
 
                                     dump_out = stdout; /* kludge */
 
-                                    rc = copycat_run (tree, &logs, mgr, cache,
-                                                      dp, extract, &params);
+                                    /* VDB-6009: fix memory leak - add collector to copycat_run() */
+                                    rc = copycat_run ( collector, tree, &logs, mgr, cache,
+                                                       dp, extract, &params);
                                     if ( rc == 0 )
                                         rc = copycat_dump ( xml_dir ? etree : tree, &logs );
                                     DEBUG_STATUS(("%s: Output XML\n", __func__));
@@ -1254,6 +1263,10 @@ MAIN_DECL( argc, argv )
             VFSManagerRelease (mgr);
             VectorWhack (&params, param_whack, NULL);
         } while (0);
+    }
+    /* VDB-6009: fix memory leak - collect leaked objects */
+    if ( NULL != collector ) {
+        cc_collector_free( collector );
     }
     ArgsWhack (args);
     orc = KDirectoryRelease (cdir); /* class extren should be NULL if never used */
