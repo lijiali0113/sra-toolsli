@@ -41,6 +41,7 @@
 */
 #define ALLOW_UPDATE 1
 
+#include <stdint.h>
 #include <sra/srapath.h>
 #include <kdb/manager.h>
 #include <kdb/database.h>
@@ -65,6 +66,7 @@
 #include <klib/out.h>
 #include <klib/writer.h>
 #include <klib/rc.h>
+#include <kfs/file.h>
 #include <sysalloc.h>
 #include <os-native.h>
 
@@ -602,6 +604,78 @@ rc_t md_update_expr ( KMDataNode *node, const char *path, const char *attr, cons
 }
 #endif
 
+struct Data {
+    void *buffer;
+    size_t size;
+};
+
+static struct Data readFromKFile(KFile const *f, char const *path, rc_t *prc)
+{
+    struct Data result = { NULL, 0 };
+    uint64_t size = 0;
+    size_t numread = 0;
+    rc_t rc = KFileSize(f, &size); assert(rc == 0);
+    
+    result.size = size;
+    *prc = rc; if (rc) return result;
+    result.buffer = malloc(result.size);
+    if (result.buffer == NULL) {
+        PLOGERR (klogErr, ( klogErr, *prc = RC(rcExe, rcFile, rcReading, rcMemory, rcExhausted), "failed to allocate memory to read '$(path)'", "path=%s", path ));
+        return result;
+    }
+    *prc = rc = KFileReadAll(f, 0, result.buffer, result.size, &numread);
+    if (rc == 0 && numread != size)
+        *prc = rc = RC(rcExe, rcFile, rcReading, rcSize, rcTooShort);
+    if (rc) {
+        PLOGERR (klogErr, ( klogErr, rc, "failed to read '$(path)'", "path=%s", path ));
+        free(result.buffer);
+        result.buffer = NULL;
+    }
+    return result;
+}
+
+static struct Data readFromStdIn(rc_t *prc) {
+    struct Data result = { NULL, 0 };
+    size_t cap = 0;
+    int ch = EOF;
+
+    while ((ch = fgetc(stdin)) != EOF) {
+        if (result.size == cap) {
+            void *tmp = realloc(result.buffer, cap = (cap < 4096 ? 4096 : cap * 2));
+            if (tmp == NULL) {
+                free(result.buffer);
+                result.buffer = NULL;
+                LOGERR (klogErr, *prc = RC(rcExe, rcFile, rcReading, rcMemory, rcExhausted), "failed to allocate memory to read stdin");
+                return result;
+            }
+            result.buffer = tmp;
+        }
+        ((char *)result.buffer)[result.size++] = ch;
+    }
+    return result;
+}
+
+static struct Data readFromFile(char const *path, rc_t *prc)
+{
+    struct Data result = {NULL, 0};
+    if (strcmp(path, "/dev/stdin") == 0)
+        result = readFromStdIn(prc);
+    else {
+        KDirectory *dir = NULL;
+        KFile const *f = NULL;
+        
+        *prc = KDirectoryNativeDir(&dir); assert(*prc == 0);
+        if (*prc == 0) {
+            *prc = KDirectoryOpenFileRead(dir, &f, "%s", path);
+            KDirectoryRelease(dir);
+            if (*prc == 0)
+                result = readFromKFile(f, prc);
+            KFileRelease(f);
+        }
+    }
+    return result;
+}
+
 static
 bool CC md_select ( void *item, void *data )
 {
@@ -624,7 +698,8 @@ bool CC md_select ( void *item, void *data )
     else
     {
         bool wildcard;
-        char *expr, *attr, path [ 4096 ];
+        char *expr = NULL, *attr = NULL, path [ 4096 ];
+        void *storage = NULL;
         size_t len = string_copy_measure ( path, sizeof path, item );
 
         /* detect assignment */
@@ -633,6 +708,18 @@ bool CC md_select ( void *item, void *data )
         {
             len = expr - path;
             * expr ++ = 0;
+        }
+        else {
+            /* detect read file */
+            char *file = string_rchr(path, len, ':');
+            if (file != NULL) {
+                KFile const *f;
+
+                len = file - path;
+                *file++ = '\0';
+
+                pb->rc = KDirectoryOpenFileRead();
+            }
         }
         attr = string_rchr ( path, len, '@' );
         if ( attr != NULL )
@@ -728,6 +815,7 @@ bool CC md_select ( void *item, void *data )
             fail = false;
 
         KMDataNodeRelease ( node );
+        free(storage);
     }
 
     return fail;
