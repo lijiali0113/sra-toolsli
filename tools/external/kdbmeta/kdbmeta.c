@@ -551,18 +551,6 @@ rc_t md_select_expr ( const KMDataNode *node, char *path, size_t psize, int plen
 }
 
 #if ALLOW_UPDATE
-static
-rc_t md_update_buffer ( KMDataNode *node, const char *attr, size_t len, void const *buff )
-{
-    if ( attr != NULL )
-    {
-        return KMDataNodeWriteAttr ( node, attr, buff );
-    }
-    else
-    {
-        return KMDataNodeWrite ( node, buff, len );
-    }
-}
 
 static
 rc_t md_update_expr ( KMDataNode *node, const char *attr, const char *expr )
@@ -633,7 +621,7 @@ static struct Data readFromKFile(KFile const *f, char const *path, rc_t *prc)
     
     result.size = size;
     *prc = rc; if (rc) return result;
-    result.buffer = malloc(result.size + 1); /* allocate enough for the '\0' */
+    result.buffer = malloc(result.size);
     if (result.buffer == NULL) {
         PLOGERR (klogErr, ( klogErr, *prc = RC(rcExe, rcFile, rcReading, rcMemory, rcExhausted), "failed to allocate memory to read '$(path)'", "path=%s", path ));
         return result;
@@ -646,8 +634,6 @@ static struct Data readFromKFile(KFile const *f, char const *path, rc_t *prc)
         free(result.buffer);
         result.buffer = NULL;
     }
-    else
-        ((char *)result.buffer)[result.size] = '\0';
     return result;
 }
 
@@ -658,7 +644,7 @@ static struct Data readFromStdIn(rc_t *prc) {
 
     while ((ch = fgetc(stdin)) != EOF) {
         if (result.size == cap) {
-            void *tmp = realloc(result.buffer, (cap = (cap < 4096 ? 4096 : cap * 2) - 1) + 1);
+            void *tmp = realloc(result.buffer, cap = (cap < 4096 ? 4096 : cap * 2));
             if (tmp == NULL) {
                 free(result.buffer);
                 result.buffer = NULL;
@@ -668,8 +654,9 @@ static struct Data readFromStdIn(rc_t *prc) {
             result.buffer = tmp;
         }
         ((char *)result.buffer)[result.size++] = ch;
-        ((char *)result.buffer)[result.size] = '\0';
     }
+    if (result.size == 0)
+        result.buffer = malloc(1);
     return result;
 }
 
