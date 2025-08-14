@@ -49,7 +49,7 @@ AddExecutableTest ( Test_SraSearch
     "ksrch" "" "--no-asan"
 )
 
-AddExecutableTest ( Test_SraSearchSlow
+AddExecutableTest ( SlowTest_SraSearch
     "test-sra-search-slow.cpp;../vdb-search.cpp;../searchblock.cpp;../blobmatchiterator.cpp;../fragmentmatchiterator.cpp;../referencematchiterator.cpp"
     "ksrch" ""
 )
