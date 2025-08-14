@@ -1234,6 +1234,7 @@ MAIN_DECL( argc, argv )
                                     /* VDB-6009: fix memory leak - add collector to copycat_run() */
                                     rc = copycat_run ( collector, tree, &logs, mgr, cache,
                                                        dp, extract, &params);
+                                    /* is a static function in this file */
                                     if ( rc == 0 )
                                         rc = copycat_dump ( xml_dir ? etree : tree, &logs );
                                     DEBUG_STATUS(("%s: Output XML\n", __func__));
