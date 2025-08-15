@@ -90,6 +90,26 @@ if ( NOT WIN32 )
 			WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} )
 	endif()
 
+        add_test( NAME Test_Prefetch_outfile
+            COMMAND
+                ${CMAKE_COMMAND} -E env ${CONFIGTOUSE}=/
+                sh test-out-file.sh ${DIRTOTEST} prefetch # 123
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} )
+        if( TARGET prefetch-asan )
+            add_test( NAME Test_Prefetch_outfile-asan
+              COMMAND
+                ${CMAKE_COMMAND} -E env ${CONFIGTOUSE}=/
+                sh -c "test-out-file ${DIRTOTEST}" prefetch-asan
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} )
+        endif()
+        if( TARGET prefetch-tsan )
+            add_test( NAME Test_Prefetch_outfile-tsan
+              COMMAND
+                ${CMAKE_COMMAND} -E env ${CONFIGTOUSE}=/
+                sh -c "test-out-file ${DIRTOTEST}" prefetch-tsan
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} )
+        endif()
+
 	add_test( NAME Test_Prefetch_outs
 		COMMAND perl test-prefetch-outs.pl ${DIRTOTEST} prefetch 0  # 1234
 		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} )

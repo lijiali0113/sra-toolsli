@@ -1,4 +1,3 @@
-#!/bin/sh
 # ===========================================================================
 #
 #                            PUBLIC DOMAIN NOTICE
@@ -21,30 +20,24 @@
 #
 #  Please cite the author in any work or product based on this material.
 #
-# ===========================================================================
-#echo "$0 $*"
+# =============================================================================$
 
 bin_dir=$1
-vdb_validate=$2
-db_acc=$3
+prefetch=$2
 
-local_acc=actual/db_schema_check_${db_acc}
-output=$(NCBI_VDB_PREFETCH_USES_OUTPUT_TO_FILE= \
-         ${bin_dir}/prefetch -o ${local_acc} ${db_acc} 2>&1)
-res=$?
-if [ "$res" != "0" ];
-	then echo "prefetch db_schema_check_${db_acc} FAILED, res=$res output=$output" && exit 1;
-else
-	output=$(${bin_dir}/${vdb_validate} ${local_acc} 2>&1)
-	res=$?
-	#rm ${local_acc}
-	if [ "$res" != "0" ];
-		then echo "${vdb_validate} db_schema_check_${db_acc} FAILED because of RC: $res, output=$output" && exit 1;
-	fi
+PREFETCH=$bin_dir/$prefetch
 
-	output_grep=$(echo "${output}" | grep "verify_database: type unrecognized while validating database" 2>&1)
-	res_grep=$?
-	if [ "$res_grep" = "0" ];
-		then echo "${vdb_validate} db_schema_check_${db_acc} FAILED because of the line: ${output_grep}" && exit 1;
-	fi
+echo Testing ${prefetch} to out file from ${bin_dir}...
+
+$PREFETCH SRR053325  -otmpfile > /dev/null 2>&1 
+if [ "$?" = "0" ]; then
+    echo "Downloading to outfile succeed"; exit 1
 fi
+
+rm -f tmpfile
+
+NCBI_VDB_PREFETCH_USES_OUTPUT_TO_FILE= \
+    $PREFETCH SRR053325  -otmpfile > /dev/null || exit 2
+rm tmpfile || exit 3
+
+echo test of ${prefetch} to out file succeed.
