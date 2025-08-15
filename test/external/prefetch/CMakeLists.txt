@@ -58,6 +58,7 @@ if ( NOT WIN32 )
 		COMMAND
                perl out_dir_and_file.pl ${DIRTOTEST} ${BINDIR} prefetch #VERBOSE
 		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} )
+# see VDB-6025
 # 	if( TARGET prefetch-asan )
 # 		add_test( NAME Test_Prefetch_out_dir_and_file-asan
 # 			COMMAND perl out_dir_and_file.pl ${DIRTOTEST} ${BINDIR} prefetch-asan
@@ -126,6 +127,7 @@ if ( NOT WIN32 )
           dbgap|110603={\"\":400,\"result\":[{\"status\":200,\"files\":[{\"object\":\"dbgap|110603\",\"locations\":[{\"link\":\"https://trace.ncbi.nlm.nih.gov/Traces/sdlr/sdlr.cgi\"}]}]}]}
           ${CONFIGTOUSE}=/ ./test-bad-kart.sh ${DIRTOTEST} prefetch
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} )
+# see VDB-6026
 # 	if( TARGET prefetch-asan )
 #       add_test( NAME Test_Prefetch_Bad_Kart-asan
 #         COMMAND
@@ -166,7 +168,7 @@ if ( NOT WIN32 )
         add_test( NAME SlowTest_Prefetch_vdbcache
 		COMMAND perl vdbcache.pl ${DIRTOTEST} prefetch 0 # 23
 		WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} )
-        if( TARGET prefetch-asan )
+        if( TARGET prefetch-asan ) # see VDB-6064
 		add_test( NAME SlowTest_Prefetch_vdbcache-asan
 			COMMAND perl vdbcache.pl ${BINDIR} prefetch-asan
 			WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} )
