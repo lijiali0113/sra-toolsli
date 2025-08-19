@@ -17,4 +17,6 @@
 #include <shared/toolkit.vers.h>
 #define SHARQ_VERSION ( to_string(TOOLKIT_VERS >> 24) + "." + to_string((TOOLKIT_VERS >> 16) & 0x00ff) + "." + to_string(TOOLKIT_VERS & 0xffff) )
 
+#include <klib/sra-release-version.h>
+
 #endif

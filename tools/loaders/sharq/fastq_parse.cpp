@@ -173,6 +173,32 @@ void s_print_deflines(std::ostream& os)
         }
 }
 
+string VersionString()
+{
+    string ret = "sharq : ";
+
+    rc_t rc = 0;
+    char cSra[512] = "";
+    SraReleaseVersion sraVersion;
+    memset(&sraVersion, 0, sizeof sraVersion);
+    rc = SraReleaseVersionGet(&sraVersion);
+    if (rc == 0) {
+        rc = SraReleaseVersionPrint(&sraVersion, cSra, sizeof cSra, NULL);
+    }
+
+    if (rc != 0 || cSra[0] == '\0' ||
+        (/*sraVersion.version == version && sraVersion.revision == 0 &&*/
+         sraVersion.type == SraReleaseVersion::eSraReleaseVersionTypeFinal))
+    {
+        ret += cSra;
+    }
+    else {
+        ret += SHARQ_VERSION;
+        ret += string( " ( " ) + cSra + " )\n";
+    }
+    return ret;
+}
+
 //  ----------------------------------------------------------------------------
 int CFastqParseApp::AppMain(int argc, const char* argv[])
 {
@@ -185,7 +211,7 @@ int CFastqParseApp::AppMain(int argc, const char* argv[])
         mOutputFile.clear();
         mDestination = "sra.out";
 
-        app.set_version_flag("--version,-V", SHARQ_VERSION);
+        app.set_version_flag("--version,-V", VersionString);
         bool print_deflines = false;
         app.add_flag("--print-deflines", print_deflines);
 
