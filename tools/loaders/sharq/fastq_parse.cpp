@@ -175,6 +175,8 @@ void s_print_deflines(std::ostream& os)
 
 string VersionString()
 {
+    //TODO: use API from sra-tools/libs/kapp when available
+
     string ret = "sharq : ";
 
     rc_t rc = 0;
@@ -192,9 +194,9 @@ string VersionString()
     {
         ret += cSra;
     }
-    else {
-        ret += SHARQ_VERSION;
-        ret += string( " ( " ) + cSra + " )\n";
+    else 
+    {   
+        ret += SHARQ_VERSION + HASH_SRA_TOOLS + " ( " + cSra + HASH_NCBI_VDB + " )\n";
     }
     return ret;
 }
