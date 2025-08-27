@@ -56,9 +56,17 @@ add_definitions(-D__fext__="cpp")
 AddExecutableTest ( Test_Ngs                        ngstest.cpp "${TEST_LIBS}" "" )
 AddExecutableTest ( Test_Ngs_Sra                    ngstest_sra.cpp  "${TEST_LIBS}" "")
 AddExecutableTest ( Test_Ngs_SraDb                  ngstest_sradb.cpp  "${TEST_LIBS}" "")
-AddExecutableTest ( SlowTest_Ngs_Csra1              ngstest_csra1.cpp  "${TEST_LIBS}" "")
+
+AddExecutableTest ( SlowTest_Ngs_Csra1_dflt ngstest_csra1.cpp "${TEST_LIBS}" "")
+set_tests_properties( SlowTest_Ngs_Csra1_dflt
+                      PROPERTIES ENVIRONMENT "NCBI_VDB_QUALITY=R" )
+
 AddExecutableTest ( Test_Ngs_Csra1_ReadCollection   ngstest_csra1_readcollection.cpp  "${TEST_LIBS}" "")
+
 AddExecutableTest ( SlowTest_Ngs_Csra1_RefWin       ngstest_csra1_refwin.cpp  "${TEST_LIBS}" "")
+set_tests_properties( SlowTest_Ngs_Csra1_RefWin
+                      PROPERTIES ENVIRONMENT "NCBI_VDB_QUALITY=R" )
+
 AddExecutableTest ( SlowTest_Ngs_Csra1_Pileup       ngstest_csra1_pileup.cpp  "${TEST_LIBS}" "")
 AddExecutableTest ( SlowTest_Ngs_Reference          ngstest_reference.cpp  "${TEST_LIBS}" "")
 
@@ -73,7 +81,11 @@ AddExecutableTest ( Test_Ngs_ByteBlob       ngstest_byteblob.cpp  "${TEST_LIBS}"
 
 AddExecutableTest ( Test_Ngs_CPP_Sra                SRAtest.cpp  "${TEST_LIBS}" "")
 AddExecutableTest ( Test_Ngs_CPP_SraDb              SRADBtest.cpp  "${TEST_LIBS}" "")
-AddExecutableTest ( SlowTest_Ngs_CPP_CSRA1          CSRA1test.cpp  "${TEST_LIBS}" "")
+
+AddExecutableTest ( SlowTest_Ngs_CPP_CSRA1_dflt CSRA1test.cpp "${TEST_LIBS}" "")
+set_tests_properties( SlowTest_Ngs_CPP_CSRA1_dflt
+                      PROPERTIES ENVIRONMENT "NCBI_VDB_QUALITY=R" )
+
 AddExecutableTest ( SlowTest_Ngs_CPP_CSRA1Pileup    CSRA1PileupTest.cpp  "${TEST_LIBS}" "")
 set_tests_properties( SlowTest_Ngs_CPP_CSRA1Pileup PROPERTIES ENVIRONMENT "NCBI_VDB_QUALITY=R" )
 
