@@ -1766,6 +1766,8 @@ static rc_t PrfMainDownload(Resolved *self, const Item * item,
 
     const char * name = NULL;
 
+    bool skipDownload = false;
+
     PrfOutFile pof;
 
     String cache;
@@ -1829,14 +1831,15 @@ static rc_t PrfMainDownload(Resolved *self, const Item * item,
             PrfMainHasDownloaded(mane, cache.addr))
         {
             STSMSG(STS_DBG, ("%s has already been downloaded", cache.addr));
-            return 0;
+            skipDownload = true;
         }
     }
 
-    if (rc == 0)
+    if (!skipDownload) {
+      if (rc == 0)
         rc = _KDirectoryMkLockName(mane->dir, & cache, lock, sizeof lock);
 
-    if (rc == 0) {
+      if (rc == 0) {
         /*const VPath * p = NULL;
         if (self->remoteHttp.path != NULL)
             p = self->remoteHttp.path;
@@ -1845,9 +1848,9 @@ static rc_t PrfMainDownload(Resolved *self, const Item * item,
         rc = PrfOutFileMkName(&pof, &cache);// , p);
         if (rc != 0)
             return rc;
-    }
+      }
 
-    if (KDirectoryPathType(mane->dir, "%s", lock) != kptNotFound) {
+      if (KDirectoryPathType(mane->dir, "%s", lock) != kptNotFound) {
         if (mane->force != eForceAll && mane->force != eForceALL) {
             KTime_t date = 0;
             rc = KDirectoryDate(mane->dir, &date, "%s", lock);
@@ -1875,21 +1878,20 @@ static rc_t PrfMainDownload(Resolved *self, const Item * item,
             STSMSG(STS_DBG, ("%s found and forced to be ignored", lock));
             rc = _KDirectoryClean(mane->dir, pof.cache, lock);
         }
-    }
-    else {
+      }
+      else
         STSMSG(STS_DBG, ("%s not found", lock));
-    }
 
-    if (rc == 0) {
+      if (rc == 0) {
         STSMSG(STS_DBG, ("creating %s", lock));
         rc = KDirectoryCreateFile(mane->dir, &flock,
             false, 0664, kcmInit | kcmParents, "%s", lock);
         DISP_RC2(rc, "Cannot CreateFile", lock);
-    }
+      }
 
-    assert(!mane->noAscp || !mane->noHttp);
+      assert(!mane->noAscp || !mane->noHttp);
 
-    if (self->respFile != NULL) {
+      if (self->respFile != NULL) {
         rc_t rd = 0;
         KSrvRespFileIterator * fi = NULL;
         rc = KSrvRespFileMakeIterator(self->respFile, &fi);
@@ -1963,8 +1965,8 @@ static rc_t PrfMainDownload(Resolved *self, const Item * item,
             }
         }
         RELEASE(KSrvRespFileIterator, fi);
-    }
-    else {
+      }
+      else {
         do {
             if (self->remoteFasp.path != NULL) {
                 rc = PrfMainDoDownload(self, item,
@@ -1987,9 +1989,9 @@ static rc_t PrfMainDownload(Resolved *self, const Item * item,
         } while (false);
     }
 
-    RELEASE(KFile, flock);
+      RELEASE(KFile, flock);
 
-    if (rc == 0) {
+      if (rc == 0) {
         KStsLevel lvl = STS_DBG;
         if (mane->dryRun)
             lvl = STS_INFO;
@@ -2000,8 +2002,8 @@ static rc_t PrfMainDownload(Resolved *self, const Item * item,
                 PLOGERR(klogInt, (klogInt, rc, "cannot rename $(from) to $(to)",
                     "from=%s,to=%S", pof.tmpName, & cache));
         }
-    }
-    else {
+      }
+      else {
         const KFile * f = NULL;
         uint64_t size = 0;
         rc_t rc = KDirectoryOpenFileRead(mane->dir, &f, pof.tmpName);
@@ -2010,9 +2012,9 @@ static rc_t PrfMainDownload(Resolved *self, const Item * item,
         KFileRelease(f);
         if (rc == 0 && size == 0)
             KDirectoryRemove(mane->dir, 0, pof.tmpName);
-    }
+      }
 
-    if (rc == 0 && !mane->dryRun) {
+      if (rc == 0 && !mane->dryRun) {
         EValidate size = eVinit;
         EValidate md5 = eVinit;
         bool encrypted = false;
@@ -2042,20 +2044,21 @@ static rc_t PrfMainDownload(Resolved *self, const Item * item,
                 }
             }
         }
-    }
+      }
 
-    if (rc == 0 && rv == 0)
+      if (rc == 0 && rv == 0)
         rc = PrfMainDownloaded(mane, cache.addr);
 
-    if (rc == 0) {
+      if (rc == 0) {
         r2 = _KDirectoryCleanCache(mane->dir, & cache);
         if (rc == 0 && r2 != 0)
             rc = r2;
-    }
+      }
 
-    r2 = _KDirectoryClean(mane->dir, &cache, lock);
-    if (rc == 0 && r2 != 0)
+      r2 = _KDirectoryClean(mane->dir, &cache, lock);
+      if (rc == 0 && r2 != 0)
         rc = r2;
+    }
 
     r2 = PrfOutFileWhack(&pof, rc == 0);
     if (rc == 0 && r2 != 0)
