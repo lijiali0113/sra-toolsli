@@ -85,6 +85,7 @@ extern "C" {
 #include <limits.h>
 #include <time.h>
 #include <zlib.h>
+
 #include "bam.h"
 #include "Globals.h"
 #include "sequence-writer.h"
@@ -112,6 +113,7 @@ extern "C" {
 #include <bm/bmtimer.h>
 #include "hashing.hpp"
 #include <set>
+#include <mutex>
 
 #ifdef __linux__
 #include <sys/resource.h>
@@ -260,10 +262,10 @@ struct context_t {
     unsigned pass;
     bool isColorSpace;
     BAM_FilePosition m_fileOffset = 0;    ///< Position in the current BAM file
-    BAM_FilePosition m_HeaderOffset = 0; 
+    BAM_FilePosition m_HeaderOffset = 0;
     uint64_t m_inputSize = 0;             ///< Total size in bytes of all input files (can be 0 for stdin inputs)
     uint64_t m_processedSize = 0;         ///< Number of already processed bytes
-    atomic<uint64_t> m_BankedSpots{0};               
+    atomic<uint64_t> m_BankedSpots{0};
     atomic<uint64_t> m_BankedSize{0};
     atomic<uint64_t> m_SpotSize{0};
     atomic<uint64_t> m_reference_len{0};
@@ -272,7 +274,7 @@ struct context_t {
     bool has_far_reads{false};
     size_t m_ReferenceSize{0};
     size_t m_ReferenceCount{0};
-    json  mTelemetry;    
+    json  mTelemetry;
     size_t m_estimatedBatchSize = 0;      ///< Estimated size of the search batch
     bool m_calcBatchSize = true;          ///< Flag to indicate whether the batch needs to be calculated
     unique_ptr<tf::Executor> m_executor;  ///< Taskflow executor
@@ -842,7 +844,7 @@ rc_t GetKeyID(context_t *const ctx,
                             int x2 = pct;
                             if (x2 - x1 <= 0) {
                                 PLOGMSG(klogErr, (klogErr, "SRAE-68: Estimated memory usage $(pred_m) GB exceeds loader memory limit $(limit_m) GB at $(pct)%", "pred_m=%lu,limit_m=%lu,pct=%u", est_mem_gb, G.LOADER_MEM_LIMIT_GB, pct));
-                                return RC(rcExe, rcNoTarg, rcProjecting, rcMemory, rcExcessive);                        
+                                return RC(rcExe, rcNoTarg, rcProjecting, rcMemory, rcExcessive);
                             }
                             int y1 = last_est_mem;
                             int y2 = est_mem/1024;
@@ -854,7 +856,7 @@ rc_t GetKeyID(context_t *const ctx,
                             if (projected_mem_kb > 0 && projected_mem_kb/(G.LOADER_MEM_LIMIT_GB * 1024 * 1024) > 1.25) {
                                 if (++mem_prediction_err_count > 3) {
                                     PLOGMSG(klogErr, (klogErr, "SRAE-68: Estimated memory usage $(pred_m) GB exceeds loader memory limit $(limit_m) GB at $(pct)%", "pred_m=%lu,limit_m=%lu,pct=%u", est_mem_gb, G.LOADER_MEM_LIMIT_GB, pct));
-                                    return RC(rcExe, rcNoTarg, rcProjecting, rcMemory, rcExcessive);                        
+                                    return RC(rcExe, rcNoTarg, rcProjecting, rcMemory, rcExcessive);
                                 } else {
                                     spdlog::warn("Estimated memory usage {:L} GB exceeds loader memory limit {:L} GB at {:L}%, count {}", est_mem_gb, G.LOADER_MEM_LIMIT_GB, pct, mem_prediction_err_count);
                                 }
@@ -870,7 +872,7 @@ rc_t GetKeyID(context_t *const ctx,
             // input is stdin. we can't make RAM  estimate so we bail out if current memory exceeds the limit
             if (float(curr_mem_gb)/G.LOADER_MEM_LIMIT_GB > 1.25) {
                 PLOGMSG(klogErr, (klogErr, "SRAE-74: Memory usage $(pred_m) GB exceeds loader memory limit $(limit_m) GB", "pred_m=%lu,limit_m=%lu,pct=%u", curr_mem_gb, G.LOADER_MEM_LIMIT_GB));
-                return RC(rcExe, rcNoTarg, rcProjecting, rcMemory, rcExcessive);                        
+                return RC(rcExe, rcNoTarg, rcProjecting, rcMemory, rcExcessive);
             }
         }
         if (spot_count % 10000000 == 0)
@@ -1098,7 +1100,7 @@ static rc_t CollectReferences(context_t *ctx, unsigned bamFiles, char const *bam
     map<string, size_t> references;     ///< name, count
 
     for (unsigned i = 0; i < bamFiles && rc == 0; ++i) {
-        if (strcmp(bamFile[i], "/dev/stdin") == 0) 
+        if (strcmp(bamFile[i], "/dev/stdin") == 0)
             continue;
         const BAM_File *bam = nullptr;
         rc = OpenBAM(&bam, NULL, bamFile[i]);
@@ -1615,6 +1617,7 @@ static context_t GlobalContext;
 #ifdef NEW_QUEUE
 static ReaderWriterQueue<queue_rec_t> rw_queue{1024};
 atomic<bool> rw_done{false};
+mutex rw_queue_mtx;
 #else
 static KQueue *bamq;
 #endif
@@ -1683,12 +1686,13 @@ static rc_t run_bamread_thread(const KThread *self, void *const file)
 
         for ( ; ; ) {
 #ifdef NEW_QUEUE
+            const std::lock_guard<std::mutex> lock( rw_queue_mtx );
             if (rw_queue.try_enqueue(std::move(queue_rec))) {
                 break;
             }
             if (rw_done)
                 break;
-            std::this_thread::yield();    
+            std::this_thread::yield();
 #else
             timeout_t tm;
             TimeoutInit(&tm, 1000);
@@ -1742,6 +1746,7 @@ static queue_rec_t* const getNextRecord(BAM_File const *const bam, rc_t *const r
     while (*rc == 0 && (*rc = Quitting()) == 0) {
         //BAM_Alignment const *rec = NULL;
 #ifdef NEW_QUEUE
+        const std::lock_guard<std::mutex> lock( rw_queue_mtx );
         if (rw_queue.try_dequeue(queue_rec)) {
             ++dequeued;
             return queue_rec;
@@ -2436,7 +2441,7 @@ MIXED_BASE_AND_COLOR:
                 }
                 unmapRefSeqId = -1;
                 if (refSeq == NULL) {
-                    // NOT FATAL ERROR, DATA ERROR, LIKELY IMPOSSIBLE 
+                    // NOT FATAL ERROR, DATA ERROR, LIKELY IMPOSSIBLE
                     rc = SILENT_RC(rcApp, rcFile, rcReading, rcData, rcInconsistent);
                     (void)PLOGERR(klogWarn, (klogWarn, rc, "File '$(file)': Spot '$(name)' refers to an unknown Reference number $(refSeqId)", "file=%s,refSeqId=%i,name=%s", bamFile, (int)refSeqId, name));
                     rc = CheckLimitAndLogError();
@@ -2458,7 +2463,7 @@ MIXED_BASE_AND_COLOR:
                         ctx->references.insert(string(refSeq->name));
                         ctx->m_reference_len += refSeq->length;
                     }
- */                 
+ */
                     bool is_new = false;
                     rc = ReferenceSetFile(ref, refSeq->name, refSeq->length, refSeq->checksum, &shouldUnmap, &wasRenamed, &is_new);
                     if (rc == 0) {
@@ -3026,7 +3031,7 @@ WRITE_SEQUENCE:
                             char const *const qual1 = (const char *)(seq1 + fip->readlen);
                             char const *const sg1 = (const char *)(qual1 + fip->readlen);
                             char const *const bx1 = (const char *)(sg1 + fip->sglen);
-                            
+
                             ctx->m_SpotSize += 2*fip->readlen + fip->sglen + fip->lglen;
 
 
@@ -3351,7 +3356,7 @@ WRITE_ALIGNMENT:
 
                 rc = ReferenceAddAlignId(ref, data.alignId, isPrimary);
                 if (rc) {
-                    // FATAL ERROR, VDB I/O ERROR                   
+                    // FATAL ERROR, VDB I/O ERROR
                     (void)PLOGERR(klogErr, (klogErr, rc, "ReferenceAddAlignId failed", NULL));
                 }
                 else {
@@ -3935,8 +3940,12 @@ static rc_t SequenceUpdateAlignInfo(context_t *ctx, Sequence *seq)
     size_t batches_processed = 0;
     size_t batches_gathered = 0;
     size_t batches_updated = 0;
+
     ReaderWriterQueue<key_batch_t> gather_queue{12};
+    mutex gather_mutex;
+
     ReaderWriterQueue<key_batch_t> update_queue{4};
+    mutex update_mutex;
 
     constexpr int BUFFER_SIZE = 10e6;
     mutex metadata_mutex;  // protects metadata in Remap mode
@@ -3952,10 +3961,12 @@ static rc_t SequenceUpdateAlignInfo(context_t *ctx, Sequence *seq)
     auto gather_task = ctx->m_executor->async([&]() {
         key_batch_t batch;
         while (exit_on_error == false) {
+            const lock_guard<mutex> lock(gather_mutex);
             if (gather_queue.try_dequeue(batch)) {
 
                 if ( batch.keys.size() == 0 )
                 {   // empty batch signals the end of processing
+                    const lock_guard<mutex> lock(update_mutex);
                     update_queue.enqueue(batch); // signal the update thread to exit
                     break;
                 }
@@ -3994,6 +4005,8 @@ static rc_t SequenceUpdateAlignInfo(context_t *ctx, Sequence *seq)
                     }
                 });
                 ctx->m_executor->run(taskflow).wait();
+
+                const lock_guard<mutex> lock(update_mutex);
                 while (!update_queue.try_enqueue(std::move(batch))) {
                     if (exit_on_error)
                         break;
@@ -4008,9 +4021,14 @@ static rc_t SequenceUpdateAlignInfo(context_t *ctx, Sequence *seq)
 
     auto update_task = ctx->m_executor->async([&]() {
         key_batch_t batch;
-        rc = 0;
+        rc_t rc = 0;
         while (true) {
-            if (update_queue.try_dequeue(batch)) {
+            bool updated = false;
+            {
+                const lock_guard<mutex> lock(update_mutex);
+                updated = update_queue.try_dequeue(batch);
+            }
+            if ( updated ) {
 
                 if ( batch.keys.size() == 0 )
                 {   // empty batch signals the end of processing
@@ -4087,6 +4105,8 @@ static rc_t SequenceUpdateAlignInfo(context_t *ctx, Sequence *seq)
             keys.clear();
             keys.reserve(BUFFER_SIZE);
             (void)PLOGMSG(klogInfo, (klogInfo, "enqueue row $(r)", "r=%lu", row));
+
+            const lock_guard<mutex> lock(gather_mutex);
             while (gather_queue.try_enqueue(std::move(batch)) == false) {
                 if (exit_on_error)
                     break;
@@ -4105,6 +4125,8 @@ static rc_t SequenceUpdateAlignInfo(context_t *ctx, Sequence *seq)
         row_offset += keys.size();
         batch.keys = std::move(keys);
         keys.clear();
+
+        const lock_guard<mutex> lock(gather_mutex);
         while (gather_queue.try_enqueue(std::move(batch)) == false) {
             if (exit_on_error)
                 break;
@@ -4112,8 +4134,11 @@ static rc_t SequenceUpdateAlignInfo(context_t *ctx, Sequence *seq)
         ++batches_processed;
     }
 
-    // once done, enqueue an empty batch to signal that there will be no more batches
-    gather_queue.enqueue( key_batch_t() );
+    {
+        // once done, enqueue an empty batch to signal that there will be no more batches
+        const lock_guard<mutex> lock(gather_mutex);
+        gather_queue.enqueue( key_batch_t() );
+    }
 
     (void)LOGMSG(klogInfo, "enqueue done");
 
@@ -4347,7 +4372,7 @@ static rc_t ArchiveBAM(VDBManager *mgr, VDatabase *db,
     }
 
     spdlog::info("ArchiveBAM, memory: {:L}", getCurrentRSS());
-    
+
     return rc;
 }
 
