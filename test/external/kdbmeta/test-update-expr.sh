@@ -123,3 +123,71 @@ if [ "${EMPTY}" != "<FOO/>" ] ; then
     echo "${TOOL}" "db" "FOO"
     exit 3
 fi
+
+# delete just in case
+"${TOOL}" db --delete A 2>/dev/null
+
+ESC_SEQ='\x9B\x28\x03\x00\x00\x00\x00\x00'
+ESC_SEQ2='\x30\x31\x32'
+
+# set the a numeric node value using escape sequences
+"${TOOL}" db A="${ESC_SEQ}"
+rc="${?}"
+if [ "${rc}" != "${RC}" ] ; then
+    echo "${TOOL} returned ${rc}, expected ${RC}"
+    echo "command executed:"
+    echo "${TOOL}" "db" "A=${ESC_SEQ}"
+    exit 2
+fi
+
+VALUE="$( "${TOOL}" db A )"
+rc="${?}"
+if [ "${rc}" != "${RC}" ] ; then
+    echo "${TOOL} returned ${rc}, expected ${RC}"
+    echo "command executed:"
+    echo "${TOOL}" "db" "A"
+    exit 2
+fi
+
+if [ "<A>${ESC_SEQ}</A>" != "${VALUE}" ] ; then
+    echo "unexpected result from ${TOOL}; got ${VALUE}, expected <A>${ESC_SEQ}</A>"
+    echo "command executed:"
+    echo "${TOOL}" "db" "A"
+    exit 3
+fi
+
+# try to set the a numeric attribute value with embedded nulls using escape sequences
+"${TOOL}" db A/@a="${ESC_SEQ}" 2>/dev/null
+rc="${?}"
+if [ "${rc}" == "0" ] ; then
+    echo "${TOOL} returned ${rc}, expected non-zero"
+    echo "command executed:"
+    echo "${TOOL}" "db" "A/@a=${ESC_SEQ}"
+    exit 2
+fi
+
+# try to set the a numeric attribute value using escape sequences
+"${TOOL}" db A/@a="${ESC_SEQ2}"
+rc="${?}"
+if [ "${rc}" != "${RC}" ] ; then
+    echo "${TOOL} returned ${rc}, expected ${RC}"
+    echo "command executed:"
+    echo "${TOOL}" "db" "A/@a=${ESC_SEQ2}"
+    exit 2
+fi
+
+VALUE="$( "${TOOL}" db A/@a )"
+rc="${?}"
+if [ "${rc}" != "${RC}" ] ; then
+    echo "${TOOL} returned ${rc}, expected ${RC}"
+    echo "command executed:"
+    echo "${TOOL}" "db" "A/@a"
+    exit 2
+fi
+
+if [ "<A a=\"012\"/>" != "${VALUE}" ] ; then
+    echo "unexpected result from ${TOOL}; got ${VALUE}, expected <A a=\"012\"/>"
+    echo "command executed:"
+    echo "${TOOL}" "db" "A/@a"
+    exit 3
+fi
