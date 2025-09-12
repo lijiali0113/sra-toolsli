@@ -123,7 +123,7 @@ rc_t make_lookup_reader( const KDirectory *dir, const struct index_reader_t * in
 
 static rc_t read_key_and_len( struct lookup_reader_t * self, uint64_t pos, uint64_t *key, size_t *len ) {
     size_t num_read;
-    size_t buffer_size = sizeof( *key ) + sizeof( dna_len_t );
+    const size_t buffer_size = sizeof( *key ) + sizeof( dna_len_t );
     uint8_t buffer[ buffer_size ];
     rc_t rc = KFileReadAll( self -> f, pos, buffer, sizeof buffer, &num_read );
     if ( rc != 0 ) {
@@ -254,12 +254,13 @@ rc_t lookup_reader_get( struct lookup_reader_t * self, uint64_t * key, SBuffer_t
             rc = SILENT_RC( rcVDB, rcNoTarg, rcReading, rcFormat, rcInvalid );
         } else {
             size_t num_read;
-            uint8_t buffer1[ 10 ];
+            const size_t buffer1_size = sizeof( *key ) + sizeof( dna_len_t );
+            uint8_t buffer1[ buffer1_size ];
 
-            rc = KFileReadAll( self -> f, self -> pos, buffer1, sizeof buffer1, &num_read );
+            rc = KFileReadAll( self -> f, self -> pos, buffer1, buffer1_size, &num_read );
             if ( 0 != rc ) {
-                /* we are not able to read 10 bytes from the file */
-                ErrMsg( "lookup_reader_get().KFileReadAll( at %ld, to_read %u ) -> %R", self -> pos, sizeof buffer1, rc );
+                /* we are not able to read buffer1_size bytes from the file */
+                ErrMsg( "lookup_reader_get().KFileReadAll( at %ld, to_read %u ) -> %R", self -> pos, buffer1_size, rc );
             } else {
                 if ( num_read != sizeof buffer1 ) {
                     rc = SILENT_RC( rcVDB, rcNoTarg, rcReading, rcFormat, rcInvalid );
@@ -268,13 +269,11 @@ rc_t lookup_reader_get( struct lookup_reader_t * self, uint64_t * key, SBuffer_t
                     uint16_t dna_len;
                     size_t to_read;
 
-                    /* we get the key out of the 10 bytes */
-                    memmove( key, buffer1, sizeof *key );
+                    /* we get the key out of buffer1 */
+                    memcpy( key, buffer1, sizeof *key );
 
-                    /* we get the dna-len out of the 10 bytes */
-                    dna_len = buffer1[ 8 ];
-                    dna_len <<= 8;
-                    dna_len |= buffer1[ 9 ];
+                    /* we get the dna-len out of buffer1 */
+                    memcpy( &dna_len, &( buffer1[ sizeof *key ] ), sizeof dna_len );
 
                     /* adjust the number of bytes to read to the half of the dna_len */
                     to_read = ( dna_len & 1 ) ? ( dna_len + 1 ) >> 1 : dna_len >> 1;
@@ -283,7 +282,7 @@ rc_t lookup_reader_get( struct lookup_reader_t * self, uint64_t * key, SBuffer_t
                         ErrMsg( "lookup_reader_get() to_read == 0 at %lu, key = %lu", self -> pos, *key );
                         packed_bases -> S . size = 0;
                         packed_bases -> S . len = 0;
-                        self -> pos += ( 10 );
+                        self -> pos += ( sizeof ( *key ) + sizeof( dna_len ) );
                     } else {
                         /* maybe we have to increase the size of the SBuffer, after seeing the real dna-length */
                         if ( packed_bases -> buffer_size < ( to_read + 2 ) ) {
@@ -293,20 +292,22 @@ rc_t lookup_reader_get( struct lookup_reader_t * self, uint64_t * key, SBuffer_t
                             uint8_t * dst = ( uint8_t * )( packed_bases -> S . addr );
 
                             /* we write the dna-len into the first 2 bytes of the destination */
-                            dst[ 0 ] = buffer1[ 8 ];
-                            dst[ 1 ] = buffer1[ 9 ];
-                            dst += 2;
+                            memcpy( dst, &( buffer1[ sizeof *key ] ), sizeof dna_len );
+                            dst += sizeof dna_len;
 
-                            rc = KFileReadAll( self -> f, self -> pos + 10, dst, to_read, &num_read );
+                            rc = KFileReadAll( self -> f, self -> pos + ( sizeof * key ) + sizeof( dna_len ),
+                                                dst, to_read, &num_read );
                             if ( 0 != rc ) {
-                                ErrMsg( "lookup_reader_get().KFileReadAll( at %ld, to_read %u ) -> %R", self -> pos + 10, to_read, rc );
+                                ErrMsg( "lookup_reader_get().KFileReadAll( at %ld, to_read %u ) -> %R",
+                                        self -> pos + sizeof( *key ) + sizeof( dna_len ) , to_read, rc );
                             } else if ( num_read != to_read ) {
                                 rc = RC( rcVDB, rcNoTarg, rcReading, rcFormat, rcInvalid );
-                                ErrMsg( "lookup_reader_get().KFileReadAll( %ld ) %d vs %d -> %R", self -> pos + 10, num_read, to_read, rc );
+                                ErrMsg( "lookup_reader_get().KFileReadAll( %ld ) %d vs %d -> %R",
+                                        self -> pos + sizeof( *key ) + sizeof( dna_len), num_read, to_read, rc );
                             } else {
-                                packed_bases -> S . size = num_read + 2;
+                                packed_bases -> S . size = num_read + sizeof( dna_len );
                                 packed_bases -> S . len = ( uint32_t )packed_bases -> S . size;
-                                self -> pos += ( num_read + 10 );
+                                self -> pos += ( num_read + sizeof( *key ) + sizeof( dna_len ) );
                             }
                         }
                     }

@@ -24,6 +24,7 @@
 *
 */
 #include "merge_sorter.h"
+#include "kfc/defs.h"
 #include "klib/text.h"
 
 #ifndef _h_err_msg_
@@ -77,14 +78,6 @@ typedef struct merge_src {
     rc_t rc;
 } merge_src_t;
 
-static void check_batch( merge_src_t * src, uint32_t count ) {
-    uint32_t i;
-    for ( i = 0; i < count; ++i ) {
-        merge_src_t * item = &src[ i ];
-        if ( item -> key > 34000000 ) { KOutMsg( "\n!!!check_batch: i=%u, key=%u \n", i, item -> key ); }
-    }
-}
-
 static merge_src_t * get_min_merge_src( merge_src_t * src, uint32_t count ) {
     merge_src_t * res = NULL;
     uint32_t i;
@@ -123,7 +116,6 @@ static rc_t init_merge_sorter( merge_sorter_t * self,
                                uint32_t num_src,
                                struct bg_update_t * gap ) {
     rc_t rc = 0;
-    uint32_t i;
 
     if ( NULL != index ) {
         rc = make_index_writer( dir, &( self -> idx ), buf_size,
@@ -149,7 +141,7 @@ static rc_t init_merge_sorter( merge_sorter_t * self,
         }
     }
 
-    for ( i = 0; 0 == rc && i < self -> num_src; ++i ) {
+    for ( uint32_t i = 0; 0 == rc && i < self -> num_src; ++i ) {
         const char * filename;
         rc = VNameListGet ( files, i, &filename );
         if ( 0 == rc ) {
@@ -172,8 +164,7 @@ static void release_merge_sorter( merge_sorter_t * self ) {
     release_lookup_writer( self -> dst );
     release_index_writer( self -> idx );
     if ( NULL != self -> src ) {
-        uint32_t i;
-        for ( i = 0; i < self -> num_src; ++i ) {
+        for ( uint32_t i = 0; i < self -> num_src; ++i ) {
             merge_src_t * s = &self -> src[ i ];
             release_lookup_reader( s -> reader );
             release_SBuffer( &s -> packed_bases );
@@ -188,18 +179,16 @@ static rc_t run_merge_sorter( merge_sorter_t * self ) {
     uint64_t loop_nr = 0;
 
     merge_src_t * to_write = get_min_merge_src( self -> src, self -> num_src ); /* above */
-    if ( to_write -> key > 34000000 ) { KOutMsg( "\n!!!RMS1 key:%lu \n", to_write -> key ); }
 
     while( 0 == rc && NULL != to_write ) {
         rc = hlp_get_quitting();    /* helper.c */
         if ( 0 == rc ) {
             if ( last_key > to_write -> key ) {
                 rc = RC( rcVDB, rcNoTarg, rcWriting, rcFormat, rcInvalid );
-                ErrMsg( "run_merge_sorter() %lu -> %lu in loop #%lu", last_key, to_write -> key, loop_nr );
+                ErrMsg( "run_merge_sorter() last key:%lu -> to-write-key:%lu in loop #%lu", last_key, to_write -> key, loop_nr );
             } else {
                 loop_nr ++;
                 last_key = to_write -> key;
-                if ( to_write -> key > 34000000 ) { KOutMsg( "\n!!!RMS2 key:%lu \n", to_write -> key ); }
                 rc = write_packed_to_lookup_writer( self -> dst,
                                                     to_write -> key,
                                                     &to_write -> packed_bases . S ); /* lookup_writer.h */

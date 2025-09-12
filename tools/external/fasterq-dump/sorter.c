@@ -162,11 +162,8 @@ static rc_t pack_read_2_4na( const String * bases, SBuffer_t * packed_bases ) {
                for that in the lookup-file! */
             rc = RC( rcVDB, rcNoTarg, rcWriting, rcFormat, rcExcessive );
         } else {
-            /* we have to down-convert from 32-bits to 16-bits */
             const dna_len_t num_bases = ( bases -> len & MAX_DNA_LEN );
-
-             /* 2 bases per byte + 2 bytes for num_bases + 2 bytes extra */
-            const dna_len_t buffer_bytes_needed = ( num_bases / 2 ) + 4;
+            const dna_len_t buffer_bytes_needed = ( num_bases / 2 ) + sizeof( dna_len_t ) + 2;
 
              /* enlarge the buffer if needed */
             if ( packed_bases -> buffer_size < buffer_bytes_needed ) {
@@ -178,31 +175,30 @@ static rc_t pack_read_2_4na( const String * bases, SBuffer_t * packed_bases ) {
             }
 
             if ( 0 == rc ) {
-                uint32_t src_idx = 0;
-                uint32_t dst_idx = 0;
-                const uint8_t * src = ( uint8_t * )bases -> addr;
                 uint8_t * dst = ( uint8_t * )packed_bases -> S . addr;
 
-                /* write num_bases to the target */
-                memmove( dst, &num_bases, sizeof( dna_len_t ) );
-                dst_idx = sizeof( dna_len_t );
-
-                /* for each base: encode to 4na and write ot buffer */
-                for ( src_idx = 0; src_idx < num_bases; ++src_idx ) {
-                    if ( dst_idx < packed_bases -> buffer_size ) {
-                        uint8_t base = ( xASCII_to_4na[ src[ src_idx ] ] & 0x0F );
-                        if ( 0 == ( src_idx & 0x01 ) ) {
-                            dst[ dst_idx ] = ( base << 4 );
-                        } else {
-                            dst[ dst_idx++ ] |= base;
+                /* write the leading num_bases to the target */
+                memcpy( dst, &num_bases, sizeof num_bases );
+                {
+                    uint32_t src_idx;
+                    uint32_t dst_idx = sizeof( dna_len_t );
+                    const uint8_t * src = ( uint8_t * )bases -> addr;
+                    /* for each base: encode to 4na and write ot buffer */
+                    for ( src_idx = 0; src_idx < num_bases; ++src_idx ) {
+                        if ( dst_idx < packed_bases -> buffer_size ) {
+                            uint8_t base = ( xASCII_to_4na[ src[ src_idx ] ] & 0x0F );
+                            if ( 0 == ( src_idx & 0x01 ) ) {
+                                dst[ dst_idx ] = ( base << 4 );
+                            } else {
+                                dst[ dst_idx++ ] |= base;
+                            }
                         }
                     }
+                    /* if we have not finished a whole byte - increase the lenght! */
+                    if ( bases -> len & 0x01 ) { dst_idx++; }
+                    /* set the length into the String... */
+                    packed_bases -> S . size = packed_bases -> S . len = dst_idx;
                 }
-                /* if we have not finished a whole byte - increase the lenght! */
-                if ( bases -> len & 0x01 ) { dst_idx++; }
-
-                /* set the length into the String... */
-                packed_bases -> S . size = packed_bases -> S . len = dst_idx;
             }
         }
     }

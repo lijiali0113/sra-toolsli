@@ -127,7 +127,7 @@ rc_t write_packed_to_lookup_writer( struct lookup_writer_t * writer,
                                     const String * bases_as_packed_4na ) {
     size_t num_writ;
     /* first write the key ( combination of seq-id and read-id ) */
-    if ( key > 34000000 ) { KOutMsg( "\n!!!WP2LW key:%lu \n", key ); }
+    /* if ( key > 34000000 ) { KOutMsg( "\n!!!WP2LW key:%lu \n", key ); } */
     rc_t rc = KFileWriteAll( writer -> f, writer -> pos, &key, sizeof key, &num_writ );
     if ( 0 != rc ) {
         ErrMsg( "write_packed_to_lookup_writer().KFileWriteAll( key ) -> %R", rc );
@@ -160,6 +160,7 @@ rc_t write_packed_to_lookup_writer( struct lookup_writer_t * writer,
     return rc;
 }
 
+
 static rc_t pack_4na( const String * unpacked, SBuffer_t * packed ) {
     rc_t rc = 0;
     if ( unpacked -> len < 1 ) {
@@ -168,27 +169,25 @@ static rc_t pack_4na( const String * unpacked, SBuffer_t * packed ) {
         if ( unpacked -> len > MAX_DNA_LEN ) {
             rc = RC( rcVDB, rcNoTarg, rcWriting, rcFormat, rcExcessive );
         } else {
-            uint32_t i;
             uint8_t * src = ( uint8_t * )unpacked -> addr;
             uint8_t * dst = ( uint8_t * )packed -> S . addr;
             dna_len_t dna_len = ( unpacked -> len & MAX_DNA_LEN );
-            uint32_t len = 0;
-            memmove( dst, &dna_len, sizeof( dna_len_t ) );
-            len += sizeof( dna_len_t );
-            for ( i = 0; i < unpacked -> len; ++i ) {
-                if ( len < packed -> buffer_size ) {
-                    uint8_t base = ( src[ i ] & 0x0F );
-                    if ( 0 == ( i & 0x01 ) ) {
-                        dst[ len ] = ( base << 4 );
+            uint32_t dst_idx = sizeof dna_len;
+            memcpy( dst, &dna_len, sizeof dna_len );
+            for ( uint32_t src_idx = 0; src_idx < unpacked -> len; ++src_idx ) {
+                if ( dst_idx < packed -> buffer_size ) {
+                    uint8_t base = ( src[ src_idx ] & 0x0F );
+                    if ( 0 == ( dst_idx & 0x01 ) ) {
+                        dst[ dst_idx ] = ( base << 4 );     /* no increment for 1st base */
                     } else {
-                        dst[ len++ ] |= base;
+                        dst[ dst_idx++ ] |= base;           /* increment for 2nd base */
                     }
                 }
             }
             if ( unpacked -> len & 0x01 ) {
-                len++;
+                dst_idx++;
             }
-            packed -> S . size = packed -> S . len = len;
+            packed -> S . size = packed -> S . len = dst_idx;
         }
     }
     return rc;
