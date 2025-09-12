@@ -1267,6 +1267,7 @@ rc_t CC Usage (const Args *args){
     "  -  vdb-lock\n"
     "  -  vdb-unlock\n");
 
+    OUTMSG(("\n"));
     HelpVersion(fullpath, KAppVersion());
 
     return rc;

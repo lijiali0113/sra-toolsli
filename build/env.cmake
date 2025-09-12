@@ -42,11 +42,13 @@ set(BUILD_TOOLS_INTERNAL    "OFF" CACHE STRING "If set to ON, build internal too
 set(BUILD_TOOLS_LOADERS     "OFF" CACHE STRING "If set to ON, build loaders")
 set(BUILD_TOOLS_TEST_TOOLS  "OFF" CACHE STRING "If set to ON, build test tools")
 set(TOOLS_ONLY              "OFF" CACHE STRING "If set to ON, generate tools targets only")
+set(DYNAMIC_LINK            "OFF" CACHE STRING "If set to ON, use dynamic linking")
 
 message( "BUILD_TOOLS_INTERNAL=${BUILD_TOOLS_INTERNAL}" )
 message( "BUILD_TOOLS_LOADERS=${BUILD_TOOLS_LOADERS}" )
 message( "BUILD_TOOLS_TEST_TOOLS=${BUILD_TOOLS_TEST_TOOLS}" )
 message( "TOOLS_ONLY=${TOOLS_ONLY}" )
+message( "DYNAMIC_LINK=${DYNAMIC_LINK}" )
 
 # ===========================================================================
 
@@ -87,6 +89,7 @@ elseif ( ${CMAKE_HOST_SYSTEM_NAME} STREQUAL  "NetBSD" )
 elseif ( ${CMAKE_HOST_SYSTEM_NAME} STREQUAL  "Windows" )
     set(OS "windows")
     set(LIBPFX "")
+    set(SHLX "lib")
     set(STLX "lib")
 else()
     message ( FATAL_ERROR "unknown OS " ${CMAKE_HOST_SYSTEM_NAME})
@@ -599,22 +602,26 @@ include(CheckCXXSourceRuns)
 # Create versioned names and symlinks for an executable.
 #
 
-if ( "GNU" STREQUAL "${CMAKE_C_COMPILER_ID}" )
-    # check for the presence of static C/C++ runtime libraries
-    set(CMAKE_REQUIRED_LINK_OPTIONS -static-libgcc)
-    check_cxx_source_runs("int main(int argc, char *argv[]) { return 0; }" HAVE_STATIC_LIBGCC)
-    set(CMAKE_REQUIRED_LINK_OPTIONS -static-libstdc++)
-    check_cxx_source_runs("int main(int argc, char *argv[]) { return 0; }" HAVE_STATIC_LIBSTDCXX)
+if ( NOT DYNAMIC_LINK )
+    if ( "GNU" STREQUAL "${CMAKE_C_COMPILER_ID}" )
+        # check for the presence of static C/C++ runtime libraries
+        set(CMAKE_REQUIRED_LINK_OPTIONS -static-libgcc)
+        check_cxx_source_runs("int main(int argc, char *argv[]) { return 0; }" HAVE_STATIC_LIBGCC)
+        set(CMAKE_REQUIRED_LINK_OPTIONS -static-libstdc++)
+        check_cxx_source_runs("int main(int argc, char *argv[]) { return 0; }" HAVE_STATIC_LIBSTDCXX)
+    endif()
 endif()
 
 function(MakeLinksExe target install_via_driver)
 
-    if ( "GNU" STREQUAL "${CMAKE_C_COMPILER_ID}" )
-        if ( HAVE_STATIC_LIBGCC )
-            target_link_options( ${target} PRIVATE -static-libgcc )
-        endif()
-        if ( HAVE_STATIC_LIBSTDCXX )
-            target_link_options( ${target} PRIVATE -static-libstdc++ )
+    if ( NOT DYNAMIC_LINK )
+        if ( "GNU" STREQUAL "${CMAKE_C_COMPILER_ID}" )
+            if ( HAVE_STATIC_LIBGCC )
+                target_link_options( ${target} PRIVATE -static-libgcc )
+            endif()
+            if ( HAVE_STATIC_LIBSTDCXX )
+                target_link_options( ${target} PRIVATE -static-libstdc++ )
+            endif()
         endif()
     endif()
 
@@ -735,17 +742,23 @@ int main(int argc, char *argv[]) {
 " HAVE_MBEDTLS_F)
 endif()
 
+if ( DYNAMIC_LINK )
+    set( LIBX ${SHLX} )
+else()
+    set( LIBX ${STLX} )
+endif()
+
 if( NOT SINGLE_CONFIG )
 #    set( COMMON_LINK_LIBRARIES kapp tk-version )
     set( COMMON_LINK_LIBRARIES tk-version )
-    set( COMMON_LIBS_READ  $<$<CONFIG:Debug>:${NCBI_VDB_LIBDIR_DEBUG}>$<$<CONFIG:Release>:${NCBI_VDB_LIBDIR_RELEASE}>/${LIBPFX}ncbi-vdb.${STLX} ${MBEDTLS_LIBS} )
-    set( COMMON_LIBS_WRITE $<$<CONFIG:Debug>:${NCBI_VDB_LIBDIR_DEBUG}>$<$<CONFIG:Release>:${NCBI_VDB_LIBDIR_RELEASE}>/${LIBPFX}ncbi-wvdb.${STLX} ${MBEDTLS_LIBS} )
+    set( COMMON_LIBS_READ  $<$<CONFIG:Debug>:${NCBI_VDB_LIBDIR_DEBUG}>$<$<CONFIG:Release>:${NCBI_VDB_LIBDIR_RELEASE}>/${LIBPFX}ncbi-vdb.${LIBX} ${MBEDTLS_LIBS} )
+    set( COMMON_LIBS_WRITE $<$<CONFIG:Debug>:${NCBI_VDB_LIBDIR_DEBUG}>$<$<CONFIG:Release>:${NCBI_VDB_LIBDIR_RELEASE}>/${LIBPFX}ncbi-wvdb.${LIBX} ${MBEDTLS_LIBS} )
 else()
     # single-config generators need full path to ncbi-vdb libraries in order to handle the dependency correctly
-#    set( COMMON_LINK_LIBRARIES ${NCBI_VDB_LIBDIR}/libkapp.${STLX} tk-version )
+#    set( COMMON_LINK_LIBRARIES ${NCBI_VDB_LIBDIR}/libkapp.${LIBX} tk-version )
     set( COMMON_LINK_LIBRARIES tk-version )
-    set( COMMON_LIBS_READ   ${NCBI_VDB_LIBDIR}/libncbi-vdb.${STLX} pthread dl m ${MBEDTLS_LIBS} )
-    set( COMMON_LIBS_WRITE  ${NCBI_VDB_LIBDIR}/libncbi-wvdb.${STLX} pthread dl m ${MBEDTLS_LIBS} )
+    set( COMMON_LIBS_READ   ${NCBI_VDB_LIBDIR}/libncbi-vdb.${LIBX} pthread dl m ${MBEDTLS_LIBS} )
+    set( COMMON_LIBS_WRITE  ${NCBI_VDB_LIBDIR}/libncbi-wvdb.${LIBX} pthread dl m ${MBEDTLS_LIBS} )
 endif()
 
 if( WIN32 )

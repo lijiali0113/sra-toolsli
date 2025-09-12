@@ -766,6 +766,7 @@ static void CoreUsage( const char* prog, const SRADumperFmt* fmt, bool brief, in
     {
         OUTMSG(( "Use option --help for more information\n" ));
     }
+    OUTMSG(( "\n" ));
     HelpVersion( prog, KAppVersion() );
     exit( exit_status );
 }
