@@ -401,6 +401,8 @@ rc_t md_select_expr ( const KMDataNode *node, char *path, size_t psize, int plen
             /* close it off */
             node_close ( path, plen, 0, 0, false );
 
+            KNamelistRelease ( children );
+
             /* Exit here if an attribute was requested in query */
             return 0;
         }
@@ -556,7 +558,7 @@ rc_t md_select_expr ( const KMDataNode *node, char *path, size_t psize, int plen
 static
 rc_t md_update_expr ( KMDataNode *node, const char *attr, const char *expr )
 {
-    rc_t rc;
+    rc_t rc = 0;
 
     /* according to documentation, "expr" is allowed to be text
        or text with escaped hex sequences. examine for escaped hex */
@@ -585,6 +587,7 @@ rc_t md_update_expr ( KMDataNode *node, const char *attr, const char *expr )
                     if ( lsn >= 10 )
                         lsn += '0' - 'A' + 10;
                     i += 3;
+                    buff[j] = (msn << 4) | lsn;
                 }
             }
             z = z || (buff[j] == '\0');
