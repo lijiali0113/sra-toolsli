@@ -401,6 +401,8 @@ rc_t md_select_expr ( const KMDataNode *node, char *path, size_t psize, int plen
             /* close it off */
             node_close ( path, plen, 0, 0, false );
 
+            KNamelistRelease ( children );
+
             /* Exit here if an attribute was requested in query */
             return 0;
         }
