@@ -123,28 +123,53 @@ class Fingerprint :
         s += f"digest  : {self . digest}\n"
         s += f"valid   : {self . check_digest()}\n"
         for base in [ 'A', 'C', 'G', 'T', 'N' ] :
-            s += f"total {base} : {self . total( base )}\n"
+            l = len( self . content[ base ] )
+            s += f"total {base} : {self . total( base )} / ( len = { l })\n"
         s += f"total   : {self . total_bases()}\n"
         return s
 
     def __add__( self, other ) :
         if not isinstance( other, Fingerprint ) :
             return NotImplemented
-        fp = dict( self . content )
+        tmp = dict( self . content ) #make a copy!
         for key in [ 'A', 'C', 'G', 'T', 'N' ] :
-            fp[ key ] = [ fp[ key ][ i ] + other . content[ key][ i ] for i in range( len( fp[ key ] ) ) ]
-        data = { "fingerprint" : fp, "fingerprint-digest" : self . digest  }
-        res = Fingerprint( data, self . src )
-        res . update_digest()
+            tmp_len = len( tmp[ key ] )
+            other_len = len( other . content[ key ] )
+            if tmp_len < other_len :
+                #if other is bigger : extend tmp with zeros
+                for i in range( other_len - tmp_len ) :
+                    tmp[ key ] . append( 0 )
+                tmp_len = len( tmp[ key ] )
+            if tmp_len == other_len :
+                #this is the common case: both arrays have the same dimension
+                tmp[ key ] = [ tmp[ key ][ i ] + other . content[ key ][ i ] for i in range( tmp_len ) ]
+            elif tmp_len > other_len :
+                #special case if other_len is shorter: we loop only over range( over_len )
+                for i in range( other_len ) :
+                    tmp[ key ][ i ] += other . content[ key ][ i ]
+        data = { "fingerprint" : tmp, "fingerprint-digest" : self . digest  } #we do not update the digest yet
+        res = Fingerprint( data, self . src ) #create a new Fingerprint instance from data
+        res . update_digest() #now we can update the digest
         return res
 
     def __sub__( self, other ) :
         if not isinstance( other, Fingerprint ) :
             return NotImplemented
-        fp = dict( self . content )
+        tmp = dict( self . content )
         for key in [ 'A', 'C', 'G', 'T', 'N' ] :
-            fp[ key ] = [ fp[ key ][ i ] - other . content[ key][ i ] for i in range( len( fp[ key ] ) ) ]
-        data = { "fingerprint" : fp, "fingerprint-digest" : self . digest  }
+            tmp_len = len( tmp[ key ] )
+            other_len = len( other . content[ key ] )
+            if tmp_len < other_len :
+                #if other is bigger : extend tmp with zeros
+                for i in range( other_len - tmp_len ) :
+                    tmp[ key ] . append( 0 )
+                tmp_len = len( tmp[ key ] )
+            if tmp_len == other_len :
+                tmp[ key ] = [ tmp[ key ][ i ] - other . content[ key ][ i ] for i in range( tmp_len ) ]
+            elif tmp_len > other_len :
+                for i in range( other_len ) :
+                    tmp[ key ][ i ] -= other . content[ key ][ i ]
+        data = { "fingerprint" : tmp, "fingerprint-digest" : self . digest  }
         res = Fingerprint( data, self . src )
         res . update_digest()
         return res
@@ -262,6 +287,33 @@ class FingerprintComp :
         s += f"equal bases  : {self . equal_bases}\n"
         s += f"equal maxpos : {self . equal_maxpos}\n"
         return s
+
+# ---------------------------------------------------------------------------------------
+
+class FingerprintRandom :
+    def __init__( self ) :
+        self . maxbases = 1000
+        self . maxeor = 100
+        self . src = "random"
+        self . maxpos = self . maxeor
+
+    def make( self, dimension = 100 ) :
+        import random
+        tmp = dict()
+        for key in [ 'A', 'C', 'G', 'T', 'N' ] :
+            a = []
+            for i in range( dimension ) :
+                a . append( random.randint( 1, self . maxbases ) )
+            tmp[ key ] = a
+        eor = []
+        for i in range( dimension ) :
+            eor . append( random.randint( 1, self . maxeor ) )
+        tmp[ "EoR" ] = eor
+        tmp[ 'maximum-position' ] = self . maxpos
+        data = { "fingerprint" : tmp, "fingerprint-digest" : "-" }
+        res = Fingerprint( data, self . src )
+        res . update_digest()
+        return res
 
 # ---------------------------------------------------------------------------------------
 
