@@ -326,7 +326,7 @@ static bg_vec_merge_src_t * get_min_bg_vec_merge_src( bg_vec_merge_src_t * batch
 static rc_t write_bg_vec_merge_src( bg_vec_merge_src_t * src, struct lookup_writer_t * writer ) {
     rc_t rc = src -> rc;
     if ( 0 == rc ) {
-        if ( src -> key > 34000000 ) { KOutMsg( "\n!!!WBVMS key:%lu \n", src -> key ); }
+        //if ( src -> key > 34000000 ) { KOutMsg( "\n!!!WBVMS key:%lu \n", src -> key ); }
         rc = write_packed_to_lookup_writer( writer, src -> key, src -> bases ); /* lookup_writer.c */
         StringWhack ( src -> bases );
         src -> bases = NULL;
