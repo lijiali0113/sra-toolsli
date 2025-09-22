@@ -104,6 +104,7 @@ struct Db {
 
     const VCursor *rCursor = nullptr;
     uint32_t rFilterIdx = 0;
+    uint32_t rQualityIdx = 0;
     uint32_t rReadIdx = 0;
     uint32_t rReadLenIdx = 0;
 
@@ -114,6 +115,7 @@ struct Db {
 
     VCursor *wCursor = nullptr;
     uint32_t wFilterIdx = 0;
+    uint32_t wQualityIdx = 0;
     uint32_t wReadIdx = 0;
 
     KMetadata *meta = nullptr;
@@ -484,8 +486,9 @@ static bool SpotIteratorNext(SpotIterator* self, rc_t* rc,
 
 static rc_t DbInit(rc_t rc, const CmdLine* args, Db* db)
 {
+    const char quality_name[] = "QUALITY";
     const char read_name[] = "READ";
-    const char read_filter_name[]   = "READ_FILTER";
+    const char read_filter_name[] = "READ_FILTER";
     const char read_len_name[] = "READ_LEN";
 
     assert(args && db);
@@ -581,6 +584,15 @@ static rc_t DbInit(rc_t rc, const CmdLine* args, Db* db)
     }
 
     if (rc == 0) {
+        rc = VCursorAddColumn(db->rCursor, &db->rQualityIdx,
+            "%s", quality_name);
+        if (rc != 0)
+            PLOGERR(klogErr, (klogErr, rc,
+                "while adding $(name) to read cursor", "name=%s", quality_name
+                ));
+    }
+
+    if (rc == 0) {
         rc = VCursorAddColumn(db->rCursor, &db->rReadLenIdx,
             "%s", read_len_name);
         if (rc != 0) {
@@ -598,6 +610,7 @@ static rc_t DbInit(rc_t rc, const CmdLine* args, Db* db)
     if (rc == 0) {
         rc = VTableCreateCursorWrite(db->tbl, &db->wCursor, kcmInsert);
         DISP_RC(rc, "while creating write cursor");
+        
         if (rc == 0) {
             rc = VCursorAddColumn(db->wCursor, &db->wFilterIdx,
                 "%s", read_filter_name);
@@ -606,12 +619,25 @@ static rc_t DbInit(rc_t rc, const CmdLine* args, Db* db)
                     "while adding $(name) to write cursor", "name=%s", read_filter_name));
             }
         }
+
         if (rc == 0 && db->redactReads) {
-            rc = VCursorAddColumn(db->wCursor, &db->wReadIdx, "%s", read_name);
+            rc = VCursorAddColumn(db->wCursor, &db->wQualityIdx, "%s",
+                quality_name);
             if (rc != 0)
                 PLOGERR(klogErr, (klogErr, rc,
-                    "while adding $(name) to write cursor", "name=%s", read_name));
+                    "while adding $(name) to write cursor",
+                    "name=%s", quality_name));
+
+            else {
+                rc = VCursorAddColumn(db->wCursor, &db->wReadIdx, "%s",
+                    read_name);
+                if (rc != 0)
+                    PLOGERR(klogErr, (klogErr, rc,
+                        "while adding $(name) to write cursor",
+                        "name=%s", read_name));
+            }
         }
+
         if (rc == 0) {
             rc = VCursorOpen(db->wCursor);
             DISP_RC(rc, "while opening write cursor");
@@ -685,6 +711,7 @@ static rc_t Work(Db* db, SpotIterator* it)
     uint32_t filter_nreads_max = 0;
 
     void* read = nullptr;
+    void* quality = nullptr;
     uint32_t spot_len_max = 0;
 
     assert(db && it);
@@ -697,6 +724,10 @@ static rc_t Work(Db* db, SpotIterator* it)
         uint32_t spot_len = 0;
         char* read_buffer = nullptr;
         const char* read_buffer_out = nullptr;
+
+        uint32_t q_spot_len = 0;
+        uint8_t* quality_buffer = nullptr;
+        const uint8_t* quality_buffer_out = nullptr;
 
         uint32_t read_len_len = 0;
         uint32_t* read_len_buffer = nullptr;
@@ -723,11 +754,26 @@ static rc_t Work(Db* db, SpotIterator* it)
                 nullptr, (const void**)&read_buffer, nullptr, &spot_len);
             DISP_RC(rc, "while reading READ");
 
-            for (uint32_t i = 0, start = 0; i < read_len_len;
-                start += read_len_buffer[i++])
-            {
-                db->in_fp.record(
-                    string(read_buffer + start, read_len_buffer[i]));
+            if (rc == 0) {
+                for (uint32_t i = 0, start = 0; i < read_len_len;
+                    start += read_len_buffer[i++])
+                {
+                    db->in_fp.record(
+                        string(read_buffer + start, read_len_buffer[i]));
+                }
+
+                rc = VCursorCellDataDirect(db->rCursor, row_id, db->rQualityIdx,
+                    nullptr, (const void**)&quality_buffer, nullptr, 
+                    &q_spot_len);
+                DISP_RC(rc, "while reading QUALITY");
+            }
+
+            if (rc == 0 && spot_len != q_spot_len) {
+                rc = RC(rcExe, rcData, rcValidating, rcData, rcUnequal);
+                PLOGERR(klogWarn, (klogWarn, rc,
+                    "Mismatch between lenght of read($(R)) and quality($(Q)) "
+                    "in spot $(N)", "R=%u,Q=%u,N=%lu",
+                    spot_len, q_spot_len, row_id));
             }
         }
 
@@ -768,8 +814,19 @@ static rc_t Work(Db* db, SpotIterator* it)
                                 rcData, rcAllocating, rcMemory, rcExhausted);
                         else
                             memset(read, 'N', spot_len_max);
+
+                        if (quality == nullptr)
+                            quality = malloc(spot_len_max);
+                        else
+                            quality = realloc(quality, spot_len_max);
+                        if (quality == nullptr)
+                            rc = RC(rcExe,
+                                rcData, rcAllocating, rcMemory, rcExhausted);
+                        else
+                            memset(quality, 0, spot_len_max);
                     }
                     read_buffer_out = (char*)read;
+                    quality_buffer_out = (uint8_t*)quality;
                 }
             }
 
@@ -784,6 +841,7 @@ static rc_t Work(Db* db, SpotIterator* it)
         }
         else {
             filter_buffer_out = filter_buffer;
+            quality_buffer_out = quality_buffer;
             read_buffer_out = read_buffer;
         }
 
@@ -809,6 +867,12 @@ static rc_t Work(Db* db, SpotIterator* it)
                 rc = VCursorWrite(db->wCursor, db->wReadIdx,
                     8 * spot_len, read_buffer_out, 0, 1);
                 DISP_RC(rc, "while writing READ");
+
+                if (rc == 0) {
+                    rc = VCursorWrite(db->wCursor, db->wQualityIdx,
+                        8 * spot_len, quality_buffer_out, 0, 1);
+                    DISP_RC(rc, "while writing QUALITY");
+                }
             }
 
             if (rc == 0) {
@@ -823,6 +887,7 @@ static rc_t Work(Db* db, SpotIterator* it)
     }
 
     free(filter); filter = nullptr;
+    free(quality); quality = nullptr;
     free(read); read = nullptr;
 
     db->nSpots = nSpots;
