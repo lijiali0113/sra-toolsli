@@ -35,7 +35,7 @@
 
 #include <kdb/manager.h> /* kptDatabase */
 
-#include <kfg/kart.h> /* Kart */
+#include <kfg/kart-priv.h> /* KDirectory_IsKartFile */
 #include <kfg/repository.h> /* KRepositoryMgr */
 
 #include <kfs/cacheteefile.h> /* KDirectoryMakeCacheTee */
@@ -3574,18 +3574,14 @@ IteratorInit(Iterator *self, const char *obj, const PrfMain *mane)
     assert(obj);
     type = KDirectoryPathType(mane->dir, "%s", obj);
     if ((type & ~kptAlias) == kptFile) {
-        type = VDBManagerPathType(mane->mgr, "%s", obj);
-        if ((type & ~kptAlias) == kptFile) {
+        rc = KDirectory_IsKartFile(mane->dir, &self->isKart, obj);
+        if (rc == 0 && self->isKart) {
             rc = KartMakeWithNgc(mane->dir, obj, &self->kart, &self->isKart,
                 mane->ngc);
-            if (rc != 0) {
-                if (self->isKart)
-                    PLOGERR(klogErr, (klogErr, rc,
-                        "Cannot open kart '$(kart)' with ngc '$(ngc)'",
-                        "kart=%s,ngc=%s", obj, mane->ngc));
-                else
-                    rc = 0;
-            }
+            if (rc != 0)
+                PLOGERR(klogErr, (klogErr, rc,
+                    "Cannot open kart '$(kart)' with ngc '$(ngc)'",
+                    "kart=%s,ngc=%s", obj, mane->ngc));
         }
     }
 
