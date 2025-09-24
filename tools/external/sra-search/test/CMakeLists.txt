@@ -53,6 +53,7 @@ AddExecutableTest ( SlowTest_SraSearch
     "test-sra-search-slow.cpp;../vdb-search.cpp;../searchblock.cpp;../blobmatchiterator.cpp;../fragmentmatchiterator.cpp;../referencematchiterator.cpp"
     "ksrch" ""
 )
+set_tests_properties(SlowTest_SraSearch PROPERTIES TIMEOUT 9000)
 
 AddExecutableTest ( Test_SraSearch_SearchBlock
     "test-searchblock.cpp;../searchblock.cpp"
