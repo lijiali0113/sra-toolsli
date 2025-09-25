@@ -177,7 +177,7 @@ if ( NOT WIN32 )
     endif()
 
     add_test( NAME SlowTest_Prefetch_vdbcache
-        COMMAND perl vdbcache.pl ${DIRTOTEST} prefetch 3 # 023
+        COMMAND perl vdbcache.pl ${DIRTOTEST} prefetch 0 # 23
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} )
     if( TARGET prefetch-asan ) # see VDB-6064
         add_test( NAME SlowTest_Prefetch_vdbcache-asan
