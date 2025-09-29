@@ -33,6 +33,15 @@ SANDBOX="LONGREAD_SANDBOX"
 RND2SRAINI="LONGREAD.INI"
 ACC="LONGREADS"
 
+OS=$(uname -s)
+#echo "$OS"
+if [ "$OS" == "Darwin" ]
+then
+    MD5="/sbin/md5 -q"
+else
+    MD5="md5sum -b"
+fi 
+
 mkdir -p $SANDBOX
 cd $SANDBOX
 
@@ -64,8 +73,8 @@ echo "testing for long-reads: FASTQ-files produced"
 # =============================================================================$
 # produce MD5-sums of the 2 FASTQ-files
 # =============================================================================$
-md5sum "${ACC}_1.fastq" > actual.txt
-md5sum "${ACC}_2.fastq" >> actual.txt
+${MD5} "${ACC}_1.fastq" > actual.txt
+${MD5} "${ACC}_2.fastq" >> actual.txt
 
 # =============================================================================$
 # produce expected MD5-sums of the 2 FASTQ-files
