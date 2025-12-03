@@ -45,6 +45,3 @@ if ( NOT WIN32 )
     #TODO: make run on Windows
 endif()
 
-# vg: $(DIRTOTEST)/align-cache
-# 	valgrind --ncbi --suppressions=$(SRCDIR)/valgrind.suppress \
-# 	 $(DIRTOTEST)/align-cache -t 10 --min-cache-count 1 CSRA_file CSRA_file.cache

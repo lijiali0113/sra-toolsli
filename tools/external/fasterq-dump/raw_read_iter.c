@@ -34,10 +34,6 @@
 #include "file_printer.h"
 #endif
 
-#ifndef _h_cmn_iter_
-#include "cmn_iter.h"
-#endif
-
 typedef struct raw_read_iter_t {
     struct cmn_iter_t * cmn;
     uint32_t seq_spot_id, seq_read_id, read_id;

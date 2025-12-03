@@ -41,7 +41,7 @@ typedef struct {
 typedef struct {
     ERunType type;
     char *name;     /* name to resolve */
-    const char *id; /* numeric ID for kart items */
+    char *id; /* numeric ID for kart items */
 
     VPathStr      local;
     const struct String *cache;
@@ -190,6 +190,9 @@ rc_t PrfMainDependenciesList(const PrfMain *self,
     const Resolved *resolved, const struct VDBDependencies **deps);
 rc_t PrfMainInit(int argc, char *argv[], PrfMain *self);
 rc_t PrfMainFini(PrfMain *self);
+
+extern const char UsageDefaultName[];
+rc_t CC UsageSummary(const char *progname);
 
 #define DISP_RC(rc, err) (void)((rc == 0) ? 0 : LOGERR(klogInt, rc, err))
 

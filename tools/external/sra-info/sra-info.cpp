@@ -150,7 +150,7 @@ SraInfo::GetPlatforms() const
     try
     {
         table.read({ "PLATFORM" })
-        .foreach([&](VDB::Cursor::RowID row, const vector<VDB::Cursor::RawData>& values ) {
+        .foreach([&](VDB::Cursor::RowID /*row*/, const vector<VDB::Cursor::RawData>& values) {
             ret.insert( PlatformToString( values[0].valueOr<uint8_t>(SRA_PLATFORM_UNDEFINED) ) );
         });
     }
@@ -289,7 +289,7 @@ SraInfo::GetSpotLayouts(
 
     auto const &table = openSequenceTable(useConsensus);
     auto const &cursor = table.read( { "READ_TYPE", "READ_LEN", "SPOT_ID" } );
-    auto handle_row = [&](VDB::Cursor::RowID row, const vector<VDB::Cursor::RawData>& values )
+    auto handle_row = [&](VDB::Cursor::RowID /*row*/, const vector<VDB::Cursor::RawData>& values)
     {
         vector<INSDC_read_type> types = values[0].asVector<INSDC_read_type>();
         vector<uint32_t> lengths = values[1].asVector<uint32_t>();
@@ -413,7 +413,7 @@ const VDB::SchemaInfo SraInfo::GetSchemaInfo(void) const {
 }
 
 SraInfo::Contents
-SraInfo::GetContents() const 
+SraInfo::GetContents() const
 {
     const KDBManager * kdb;
     rc_t rc = KDBManagerMakeRead ( &kdb, nullptr );
@@ -457,4 +457,118 @@ char const *SraInfo::QualityDescription() const {
     return HasPhysicalQualities() ? "STORED"
          : HasLiteMetadata() ? "REMOVED"
          : "NONE";
+}
+
+// convert a string containing a uint64_t to a string representing the same value as a decimal
+static
+string
+U64StringToDecString( const string & encoded )
+{
+    assert( encoded.size() == sizeof(uint64_t) );
+    uint64_t v = *(const uint64_t*) encoded.data();
+    ostringstream ret;
+    ret << v;
+    return ret.str();
+}
+
+SraInfo::Fingerprints
+SraInfo::GetFingerprints( Detail detail ) const
+{
+    Fingerprints ret;
+
+    if ( ! isDatabase() || ! m_u.db->hasTable( "SEQUENCE" ))
+    {
+        return ret;
+    }
+
+    VDB::Table seq = (*m_u.db)["SEQUENCE"];
+    VDB::MetadataCollection seqmeta = seq.metadata();
+
+    if ( ! seqmeta.hasChildNode("QC"))
+    {   // no fingerprint info in this database
+        return ret;
+    }
+
+    // current output fp
+    ret.push_back( TreeNode( "fingerprint", seqmeta["QC/current/fingerprint"].value() ) );
+    ret.push_back( TreeNode( "digest",      seqmeta["QC/current/digest"].value()) );
+    ret.push_back( TreeNode( "algorithm",   seqmeta["QC/current/algorithm"].value()) );
+
+    if ( detail > Short )
+    {
+        ret.push_back( TreeNode( "timestamp",   U64StringToDecString( seqmeta["QC/current/timestamp"].value() ) ) );
+        ret.push_back( TreeNode( "version",     seqmeta["QC/current/version"].value()) );
+        ret.push_back( TreeNode( "format",      seqmeta["QC/current/format"].value()) );
+
+        // history of the output fp updates (optional)
+        if ( seqmeta.hasChildNode("QC/history") )
+        {
+            VDB::Metadata seq_history = seqmeta.childNode("QC/history");
+            VDB::NameList updates = seq_history.children();
+
+            TreeNode history { "history", TreeNode::Array };
+            const string start { "update_" };
+            for ( unsigned int i = 0; i < updates.count(); ++ i)
+            {
+                const string& name = updates[i];
+                if ( name.compare(0, start.size(), start) == 0 )
+                {
+                    TreeNode h { name, TreeNode::Element };
+
+                    h.subnodes.push_back( TreeNode ( "update", to_string( i + 1 ) ) );
+
+                    h.subnodes.push_back( TreeNode ( "fingerprint", seq_history[ name ] [ "fingerprint" ].value() ) );
+                    h.subnodes.push_back( TreeNode ( "digest",      seq_history[ name ] [ "digest" ].value() ) );
+                    h.subnodes.push_back( TreeNode ( "algorithm",   seq_history[ name ] [ "algorithm"].value() ) );
+                    h.subnodes.push_back( TreeNode ( "timestamp",   U64StringToDecString ( seq_history[ name ] [ "timestamp"].value() ) ) );
+                    h.subnodes.push_back( TreeNode ( "version",     seq_history[ name ] [ "version"].value() ) );
+                    h.subnodes.push_back( TreeNode ( "format",      seq_history[ name ] [ "format"].value() ) );
+
+                    history.subnodes.push_back( h );
+                }
+            }
+            if ( ! history.subnodes.empty() )
+            {
+                ret.push_back( history );
+            }
+        }
+
+        if ( detail > Abbreviated )
+        {   // input fp(s)
+            VDB::MetadataCollection dbmeta = m_u.db -> metadata();
+            if ( dbmeta.hasChildNode( "LOAD/QC" ) )
+            {
+                VDB::Metadata db_inputs = dbmeta.childNode("LOAD/QC");
+                VDB::NameList children = db_inputs.children();
+
+                TreeNode inputs { "inputs", TreeNode::Array };
+                const string start { "file_" };
+                for ( unsigned int i = 0; i < children.count(); ++ i)
+                {
+                    const string& name = children[i];
+                    if ( name.compare(0, start.size(), start) == 0 )
+                    {
+                        TreeNode in { name, TreeNode::Element };
+
+                        in.subnodes.push_back( TreeNode ( "file", to_string( i + 1 ) ) );
+
+                        in.subnodes.push_back( TreeNode( "name",        db_inputs [ name ] . attributeValue("name") ) );
+                        in.subnodes.push_back( TreeNode( "fingerprint", db_inputs [ name ] . value() ) );
+                        in.subnodes.push_back( TreeNode( "algorithm",   db_inputs [ name ] . attributeValue("algorithm") ) );
+                        in.subnodes.push_back( TreeNode( "digest",      db_inputs [ name ] . attributeValue("digest") ) );
+                        in.subnodes.push_back( TreeNode( "version",      db_inputs [ name ] . attributeValue("version") ) );
+                        in.subnodes.push_back( TreeNode( "format",      db_inputs [ name ] . attributeValue("format") ) );
+
+                        inputs.subnodes.push_back( in );
+                    }
+                }
+                if ( ! inputs.subnodes.empty() )
+                {
+                    ret.push_back( inputs );
+                }
+            }
+        }
+    }
+
+    return ret;
 }

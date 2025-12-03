@@ -337,16 +337,16 @@ class KStreamFactory {
                 auto vpath = uri_to_vpath( uri );
                 if ( nullptr == vpath ) {
                     throw std::runtime_error( "failed to create VPath from URI" );
-                } else {
+                } else try {
                     auto req = make_request( mgr, vpath, reliable );
                     if ( nullptr == req ) {
                         throw std::runtime_error( "failed to create request" );
-                    } else {
+                    } else try {
                         KClientHttpResult * rslt = NULL;
                         rc = KClientHttpRequestGET( req, &rslt );
                         if ( 0 != rc ) {
                             MsgFactory::throw_msg( "KClientHttpRequestGET() failed : ", rc );
-                        } else {
+                        } else try {
                             uint32_t code = 0;
                             rc = KClientHttpResultStatus( rslt, &code, NULL, 0, NULL );
                             if ( rc != 0 ) {
@@ -361,9 +361,24 @@ class KStreamFactory {
                             }
                             KClientHttpResultRelease( rslt );
                         }
+                        catch(...)
+                        {
+                            KClientHttpResultRelease( rslt );
+                            throw;
+                        }
                         KClientHttpRequestRelease( req );
                     }
+                    catch(...)
+                    {
+                        KClientHttpRequestRelease( req );
+                        throw;
+                    }
                     VPathRelease( vpath );
+                }
+                catch(...)
+                {
+                    VPathRelease( vpath );
+                    throw;
                 }
                 KNSManagerRelease( mgr );
             }

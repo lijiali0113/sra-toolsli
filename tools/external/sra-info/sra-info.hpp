@@ -32,6 +32,8 @@
 #include <exception>
 
 #include <vdb.hpp>
+#include <fingerprint.hpp>
+
 #include <insdc/sra.h>
 #include <kdb/manager.h>
 
@@ -92,6 +94,23 @@ public:
     bool HasLiteMetadata() const;
 
     char const *QualityDescription() const;
+
+    struct TreeNode
+    {
+        typedef enum { Value, Element, Array } NodeType;
+
+        std::string key;
+        NodeType type;
+        std::string value; // used only if type == Value
+        std::vector<TreeNode> subnodes;  // used if type == Element or Array
+
+        TreeNode( const std::string & p_key, const std::string & p_value )
+        : key(p_key), type( Value ), value(p_value) {}
+        TreeNode( const std::string & p_key, NodeType p_type )
+        : key(p_key), type(p_type) {}
+    };
+    typedef std::vector< TreeNode > Fingerprints;
+    Fingerprints GetFingerprints( Detail detail ) const;
 
 private:
     bool isDatabase() const;

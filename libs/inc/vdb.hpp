@@ -172,8 +172,7 @@ namespace VDB {
             name += part;
 
             for (e = e->next; e; e = e->next) {
-                std::string part(e->name->addr, e->name->size);
-                name += ":" + part;
+                name += ":" + std::string(e->name->addr, e->name->size);
             }
 
             uint32_t version = sn->version;
@@ -587,6 +586,13 @@ namespace VDB {
             auto const rc = KMetadataOpenNodeRead(o, &node, "");
             if (rc) throw Error(rc, __FILE__, __LINE__);
             return Metadata{ const_cast< KMDataNode * >(node) };
+        }
+        bool hasChildNode( const char * name ) const 
+        {
+            KMDataNode const *node = nullptr;
+            bool ret = KMetadataOpenNodeRead(o, &node, "%s", name) == 0;
+            KMDataNodeRelease( node );
+            return ret;
         }
         Metadata childNode(char const *name) const {
             KMDataNode const *node = nullptr;

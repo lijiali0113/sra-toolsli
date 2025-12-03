@@ -41,10 +41,24 @@
 #include <string_view>
 #include <cassert>
 
+/// @brief Use for inserting member names into JSON_ostream.
+/// @details This is mainly a convienence and to make code more self-documenting.
 struct JSON_Member {
     std::string name;
 };
 
+/// @brief A JSON formatting output stream.
+///
+/// It is incumbent on the caller to create logically correct JSON. In
+/// particular, if you attempt to insert a list seperator (i.e. `,`) when
+/// you have not yet created an object or array (a list context), it will
+/// break.
+///
+/// This formatter is stateful. It tracks the list context depth and has a
+/// string mode to enable correct handling of special characters in a string.
+///
+/// When not in string mode, these characters have special meanings: `[]{},"`,
+/// see `insert(char)` below.
 class JSON_ostream {
     std::ostream &strm;
     bool compact = false;
@@ -265,17 +279,31 @@ class JSON_ostream {
         insert_raw(':');
         return *this;
     }
+    
+    template <typename T>
+    static std::string c_locale_to_string(T const &v) {
+        std::ostringstream ss; ss.imbue(std::locale::classic());
+        ss << v;
+        auto const &result = ss.str();
+        assert(result.find(',') == result.npos); // make sure we don't have disallowed characters
+        return result;
+    }
 
     /// This is a catch-all, intended for numeric types
     template <typename T>
     JSON_ostream &insert(T const &v) {
-        if (!instr) {
-            if (comma)
-                listItem();
-            if (!ws && !compact)
-                insert_raw(' ');
+        if (instr) {
+            strm << v;
+            return *this;
         }
-        strm << v;
+        if (comma)
+            listItem();
+        if (!ws && !compact)
+            insert_raw(' ');
+        
+        // make sure we use the "C" locale
+        strm << c_locale_to_string(v);
+
         return *this;
     }
 
@@ -286,14 +314,20 @@ public:
     {}
 
     bool is_compact() const { return compact; }
-    JSON_ostream &set_compact(bool value) { compact = value; return *this; }
+    JSON_ostream &set_compact(bool value) { 
+        if (value && !ws && !compact)
+            insert_raw(' ');
+        compact = value; return *this;
+    }
 
     struct Compact { bool value; };
     friend JSON_ostream &operator <<(JSON_ostream &s, Compact v) {
         return s.set_compact(v.value);
     }
 
-    /// This will use the appropriate overload of `insert`
+    /// This will use the appropriate overload of `insert`.
+    /// It is incumbent on the caller to create logically correct JSON.
+    /// See `insert(char)` above for how special characters cause state changes.
     template <typename T>
     friend JSON_ostream &operator <<(JSON_ostream &s, T const &v) {
         return s.insert(v);

@@ -75,6 +75,9 @@ extern "C" {
 #include "sbuffer.h"
 #endif
 
+typedef uint32_t dna_len_t;
+#define MAX_DNA_LEN 0xFFFFFFFF
+
 typedef struct join_stats
 {
     uint64_t spots_read;

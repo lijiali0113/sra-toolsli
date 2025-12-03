@@ -252,7 +252,8 @@ static const char * insp_acc_type_to_string( acc_type_t acc_type ) {
         case acc_sra_db        : res = ACC_TYPE_SRA_DB_STR; break;
         case acc_pacbio_bam    : res = ACC_TYPE_SRA_PACBIO_BAM_STR; break;
         case acc_pacbio_native : res = ACC_TYPE_SRA_PACBIO_NATIVE_STR; break;
-        case acc_none          : res = ACC_TYPE_SRA_NONE_STR;break;
+        case acc_none          : res = ACC_TYPE_SRA_NONE_STR; break;
+        default                : res = ACC_TYPE_SRA_NONE_STR; break;
     }
     return res;
 }

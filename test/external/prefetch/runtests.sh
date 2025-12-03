@@ -79,7 +79,7 @@ WGSF=${SRAF}:data/sracloud/traces/wgs03/WGS/AF/VF/AFVF01.1
 work_dir=$(pwd)
 #echo WORK DIRECTORY: ${work_dir}
 
-if [ "$NOT_ALL" == "" ]; then
+if [ "$NOT_ALL" = "" ]; then
 # ##############################################################################
 # echo s-option:
 mkdir -p tmp
@@ -122,6 +122,7 @@ $(export VDB_CONFIG=`pwd`/tmp; export NCBI_SETTINGS=/; $PREFETCH $SRAC)
 if [ "$?" != "0" ]; then
     echo "Downloading ACCESSION FAILED, CMD=$COMMAND"; exit 119
 fi
+
 rm tmp/sra/${SRAC}.sra || exit 121
 
 echo Downloading ACCESSION TO FILE: SHORT OPTION
@@ -130,7 +131,8 @@ COMMAND\
 ="export VDB_CONFIG=`pwd`/tmp; export NCBI_SETTINGS=/; $PREFETCH $SRAC -otmp/1"
 if [ "$VERBOSE" != "" ]; then echo $COMMAND; fi
 output=\
-$(export VDB_CONFIG=`pwd`/tmp; export NCBI_SETTINGS=/; $PREFETCH $SRAC -otmp/1)
+$(NCBI_SETTINGS=/ NCBI_VDB_PREFETCH_USES_OUTPUT_TO_FILE= VDB_CONFIG=`pwd`/tmp \
+  $PREFETCH $SRAC -otmp/1)
 if [ "$?" != "0" ]; then
     echo "Downloading ACCESSION TO FILE: SHORT OPTION FAILED, CMD=$COMMAND"
     exit 132
@@ -143,7 +145,8 @@ COMMAND\
 ="export VDB_CONFIG=`pwd`/tmp;export NCBI_SETTINGS=/;$PREFETCH $SRAC --output-file tmp/1"
 if [ "$VERBOSE" != "" ]; then echo $COMMAND; fi
 output=\
-$(export VDB_CONFIG=`pwd`/tmp;export NCBI_SETTINGS=/;$PREFETCH $SRAC --output-file tmp/1)
+$(NCBI_SETTINGS=/ NCBI_VDB_PREFETCH_USES_OUTPUT_TO_FILE= VDB_CONFIG=`pwd`/tmp \
+  $PREFETCH $SRAC --output-file tmp/1)
 if [ "$?" != "0" ]; then
     echo "Downloading ACCESSION TO FILE: LONG OPTION FAILED, CMD=$COMMAND"
     exit 145
@@ -273,6 +276,7 @@ perl ../check-prefetch-out.pl 0 $verboseN \
 "$PREFETCH --ngc ../data/prj_phs710EA_test.ngc --cart ../data/3-dbGaP-0.krt -Cn" \
                                                     || exit 273
 cd ${work_dir}                                      || exit 274
+
 rm     tmp/SRR1219879/SRR1219879.sra*               || exit 275
 rm     tmp/SRR1219880/SRR1219880.sra*               || exit 276
 rm     tmp/SRR1257493/SRR1257493.sra*               || exit 277
@@ -593,6 +597,38 @@ NCBI_SETTINGS=/   VDB_CONFIG=k ${bin_dir}/align-info ERR3091357 | grep http\
                                                                      && exit 597
 ls ERR3091357/ERR3091357.sralite ERR3091357/JTFH01 ERR3091357/KN707955.1 \
                                                          > /dev/null || exit 601
+
+
+ACCN=ERR3091357
+
+# test of kdbmeta ERR3091357/
+KDBMETA=$bin_dir/kdbmeta
+if [ -f $KDBMETA ] ; then
+    $KDBMETA -u $ACCN/ LOAD/timestamp || exit 602
+else
+    echo $KDBMETA not found, test skipped
+fi
+
+# test of pileup-stats ERR3091357/
+PILEUPSTATS=$bin_dir/pileup-stats
+if [ -f $PILEUPSTATS ] ; then
+    $PILEUPSTATS $ACCN/ > /dev/null || exit 603
+else
+    echo $PILEUPSTATS not found, test skipped
+fi
+
+# test of prefetch ERR3091357/
+$PREFETCH $ACCN/ || exit 604
+
+# test of srapath ERR3091357/
+SRAPATH=$bin_dir/srapath
+if [ -f $SRAPATH ] ; then
+    $SRAPATH $ACCN/ | grep efetch/tmp/$ACCN/$ACCN.sra || exit 605
+else
+    echo $SRAPATH not found, test skipped
+fi
+
+
 echo cd $work_dir
 cd ${work_dir}                                                       || exit 603
 COMMAND\
@@ -668,7 +704,7 @@ cd tmp  && PATH=$bin_dir:$TESTBINDIR:$PATH NCBI_SETTINGS=/ VDB_CONFIG=k \
                                                                      || exit 631
 cd ${work_dir}                                                       || exit 632
 rm -r tmp                                                            || exit 633
-fi # if [ "$NOT_ALL" == "" ]
+fi # if [ "$NOT_ALL" = "" ]
 
 echo ad_not_cwd:
 echo Testing prefetch into output directory and using results

@@ -249,6 +249,45 @@ TEST_CASE(InsertMembers_compact)
     REQUIRE_EQ( string{R"({"name1":"value1","name2":"value2","emptyArray":[],"emptyObject":{}})"}, outStr.str() );
 }
 
+static void set_the_locale(std::ostream &strm)
+{
+    char const *locales[] = { "en_US.UTF-8", "en_US.utf8", "en_US.utf-8", "en_US.UTF8", "en_US", nullptr };
+    char const **cur = &locales[0];
+    while (*cur) {
+        try {
+            strm.imbue(std::locale(*cur));
+            return;
+        }
+        catch (std::runtime_error const &e) { (void)(e); }
+        ++cur;
+    }
+    throw ncbi::NK::test_skipped{"no appropriate locale"};
+}
+
+TEST_CASE(Test_locale)
+{
+    ostringstream test;
+    set_the_locale(test);
+    test << 1234.56;
+    
+    auto const expected = string{R"([")"} + test.str() + string{R"(",1234.56])"};
+    
+    ostringstream outStr;
+    
+    outStr.imbue(test.getloc());
+    
+    auto jso = JSON_ostream{outStr, true};
+    jso << '['
+        << '"'
+            << 1234.56 // this will use the set locale (it is inside a string)
+        << '"'
+        << ','
+        << 1234.56 // this will use the "C" locale, i.e. no commas
+    << ']';
+
+    REQUIRE_EQ(expected, outStr.str());
+}
+
 int main (int argc, char *argv [])
 {
     return QaStatsOutputTestSuite(argc, argv);

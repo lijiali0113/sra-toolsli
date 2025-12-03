@@ -24,6 +24,8 @@
 *
 */
 #include "merge_sorter.h"
+#include "kfc/defs.h"
+#include "klib/text.h"
 
 #ifndef _h_err_msg_
 #include "err_msg.h"
@@ -63,6 +65,10 @@
 
 #ifndef _h_kproc_timeout_
 #include <kproc/timeout.h>
+#endif
+
+#ifndef _h_klib_out_
+#include <klib/out.h>
 #endif
 
 typedef struct merge_src {
@@ -110,7 +116,6 @@ static rc_t init_merge_sorter( merge_sorter_t * self,
                                uint32_t num_src,
                                struct bg_update_t * gap ) {
     rc_t rc = 0;
-    uint32_t i;
 
     if ( NULL != index ) {
         rc = make_index_writer( dir, &( self -> idx ), buf_size,
@@ -136,7 +141,7 @@ static rc_t init_merge_sorter( merge_sorter_t * self,
         }
     }
 
-    for ( i = 0; 0 == rc && i < self -> num_src; ++i ) {
+    for ( uint32_t i = 0; 0 == rc && i < self -> num_src; ++i ) {
         const char * filename;
         rc = VNameListGet ( files, i, &filename );
         if ( 0 == rc ) {
@@ -159,8 +164,7 @@ static void release_merge_sorter( merge_sorter_t * self ) {
     release_lookup_writer( self -> dst );
     release_index_writer( self -> idx );
     if ( NULL != self -> src ) {
-        uint32_t i;
-        for ( i = 0; i < self -> num_src; ++i ) {
+        for ( uint32_t i = 0; i < self -> num_src; ++i ) {
             merge_src_t * s = &self -> src[ i ];
             release_lookup_reader( s -> reader );
             release_SBuffer( &s -> packed_bases );
@@ -173,6 +177,7 @@ static rc_t run_merge_sorter( merge_sorter_t * self ) {
     rc_t rc = 0;
     uint64_t last_key = 0;
     uint64_t loop_nr = 0;
+
     merge_src_t * to_write = get_min_merge_src( self -> src, self -> num_src ); /* above */
 
     while( 0 == rc && NULL != to_write ) {
@@ -180,7 +185,7 @@ static rc_t run_merge_sorter( merge_sorter_t * self ) {
         if ( 0 == rc ) {
             if ( last_key > to_write -> key ) {
                 rc = RC( rcVDB, rcNoTarg, rcWriting, rcFormat, rcInvalid );
-                ErrMsg( "run_merge_sorter() %lu -> %lu in loop #%lu", last_key, to_write -> key, loop_nr );
+                ErrMsg( "run_merge_sorter() last key:%lu -> to-write-key:%lu in loop #%lu", last_key, to_write -> key, loop_nr );
             } else {
                 loop_nr ++;
                 last_key = to_write -> key;
@@ -211,7 +216,7 @@ static rc_t run_merge_sorter( merge_sorter_t * self ) {
     a batch of jobs. It then processes this batch by merge-sorting the content of
     the KVector's into a temporary file. The entries are key-value pairs with a 64-bit
     key which is composed from the SEQID and one bit: first or second read in a spot.
-    The value is the packed READ ( pack_4na() in helper.c ).
+    The value is the packed READ ( pack_4na() in lookup_writer.c ).
     The background-merger terminates when it's input-queue is sealed in perform_fastdump()
     in fastdump.c after all sorter-threads ( producers ) have been joined.
     The final output of the background-merger is a list of temporary files produced
@@ -234,6 +239,7 @@ typedef struct background_vector_merger_t {
     uint64_t total_rowcount_prod;   /* updated by the producer, informs the vector-merger about the
                                        rowcount to be processed */
     bool details;
+    bool keep_tmp_files;
 } background_vector_merger_t;
 
 static rc_t wait_for_background_vector_merger( background_vector_merger_t * self ) {
@@ -400,7 +406,7 @@ static rc_t background_vector_merger_process_batch( background_vector_merger_t *
         ErrMsg( "merge_sorter.c background_vector_merger_process_batch() -> %R", rc );
     } else {
         STATUS ( STAT_USR, "batch output filename is : %s", buffer );
-        rc = clt_add_file( self -> cleanup_task, buffer );
+        rc = clt_add_file( self -> cleanup_task, buffer ); // cleanup_task.c
 
         if ( 0 == rc ) {
             struct lookup_writer_t * writer; /* lookup_writer.h */
@@ -430,11 +436,6 @@ static rc_t background_vector_merger_process_batch( background_vector_merger_t *
                 release_lookup_writer( writer ); /* lookup_writer.c */
             }
         }
-
-        /*
-        if ( rc == 0 && self -> file_merger != NULL )
-            rc = lookup_check_file( self -> dir, self -> buf_size, buffer );
-        */
 
         if ( 0 == rc && NULL != self -> file_merger ) {
             rc = push_to_background_file_merger( self -> file_merger, buffer ); /* below */
@@ -502,6 +503,7 @@ rc_t make_background_vector_merger( struct background_vector_merger_t ** merger,
         b -> total = 0;
         b -> total_rowcount_prod = 0;
         b -> details = args -> details;
+        b -> keep_tmp_files = args -> keep_tmp_files;
 
         rc = KQueueMake ( &( b -> job_q ), args -> batch_size );
         if ( 0 == rc ) {
@@ -571,7 +573,7 @@ rc_t push_to_background_vector_merger( background_vector_merger_t * self, KVecto
     a batch of jobs. It then processes this batch by merge-sorting the content of
     the the files into a temporary file. The file-entries are key-value pairs with a 64-bit
     key which is composed from the SEQID and one bit: first or second read in a spot.
-    The value is the packed READ ( pack_4na() in helper.c ).
+    The value is the packed READ ( pack_4na() in lookup_writer.c ).
     The background-merger terminates when it's input-queue is sealed in perform_fastdump()
     in fastdump.c after all background-vector-merger-threads ( producers ) have been joined.
     The final output of the background-merger is a list of temporary files produced
@@ -595,6 +597,7 @@ typedef struct background_file_merger_t {
     uint64_t total_rowcount_prod;   /* updated by the producer, informs the file-merger about the
                                        rowcount to be processed */
     bool details;
+    bool keep_tmp_files;
 } background_file_merger_t;
 
 static void release_background_file_merger( background_file_merger_t * self ) {
@@ -657,6 +660,7 @@ static rc_t process_background_file_merger( background_file_merger_t * self ) {
                     if ( 0 == rc ) {
                         num_src++;
                     }
+                    StringWhack( filename );
                 }
             }
             if ( 0 == rc ) {
@@ -732,7 +736,7 @@ static rc_t process_final_background_file_merger( background_file_merger_t * sel
                 release_merge_sorter( &sorter );
             }
         }
-        if ( 0 == rc ) {
+        if ( 0 == rc && ( ! self -> keep_tmp_files ) ) {
             rc = ft_delete_files( self -> dir, batch_files, self -> details );
         }
         VNamelistRelease( batch_files );
@@ -800,6 +804,7 @@ rc_t make_background_file_merger( background_file_merger_t ** merger,
         b -> total_rows = 0;
         b -> total_rowcount_prod = 0;
         b -> details = args -> details;
+        b -> keep_tmp_files = args -> keep_tmp_files;
 
         rc = locked_file_list_init( &( b -> files ), 25  );
         if ( 0 == rc ) {

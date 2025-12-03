@@ -30,8 +30,8 @@
 #include <ngs/ReadIterator.hpp>
 #include <ngs/Read.hpp>
 
+#include <kapp/vdbapp.h>
 #include <kapp/main.h>
-
 
 #include <math.h>
 #include <iostream>
@@ -40,6 +40,8 @@
 
 using namespace ngs;
 using namespace std;
+
+const char UsageDefaultName[] = "dump-ref-fasta";
 
 const String COLON = std::string( ":" );
 const String DASH  = std::string( "-" );
@@ -181,7 +183,7 @@ class DumpReferenceFASTA
                 if ( line != 0 )
                     cout << '\n';
             }
-            catch ( ErrorMsg x )
+            catch ( const ErrorMsg & x )
             {
                 cerr <<  x.toString() << '\n';
             }
@@ -248,7 +250,7 @@ static void print_version ( void )
     HelpVersion ( UsageDefaultName, KAppVersion () );
 }
 
-int run ( int argc, char const *argv[] )
+int run ( int argc, char *argv[] )
 {
     if ( argc < 2 )
     {
@@ -327,47 +329,34 @@ int run ( int argc, char const *argv[] )
     return 10;
 }
 
-extern "C"
+MAIN_DECL(argc, argv)
 {
-    const char UsageDefaultName[] = "dump-ref-fasta";
+    VDB::Application app(argc, argv);
 
-    rc_t CC UsageSummary (const char * progname)
-    {   // this is not used at this point, see print_help()
-        return 0;
-    }
-
-    rc_t CC Usage ( struct Args const * args )
-    {   // this is not used at this point, see print_help()
-        return 0;
-    }
-
-    rc_t CC KMain ( int argc, char *argv [] )
+    try
     {
-        try
-        {
-            return run ( argc, (const char**)argv );
-        }
-        catch ( ErrorMsg & x )
-        {
-            std :: cerr <<  x.toString () << '\n';
-            return -1;
-        }
-        catch ( std :: exception & x )
-        {
-            std :: cerr <<  x.what () << '\n';
-            return -1;
-        }
-        catch ( const char x [] )
-        {
-            std :: cerr <<  x << '\n';
-            return -1;
-        }
-        catch ( ... )
-        {
-            std :: cerr <<  "unknown exception\n";
-            return -1;
-        }
-
-        return 0;
+        return run ( argc, app.getArgV() );
     }
+    catch ( ErrorMsg & x )
+    {
+        std :: cerr <<  x.toString () << '\n';
+        return -1;
+    }
+    catch ( std :: exception & x )
+    {
+        std :: cerr <<  x.what () << '\n';
+        return -1;
+    }
+    catch ( const char x [] )
+    {
+        std :: cerr <<  x << '\n';
+        return -1;
+    }
+    catch ( ... )
+    {
+        std :: cerr <<  "unknown exception\n";
+        return -1;
+    }
+
+    return 0;
 }

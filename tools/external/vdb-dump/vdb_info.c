@@ -382,8 +382,9 @@ static const char * get_platform( const VTable * tab ) {
                 rc = VCursorOpen( cur );
                 if ( 0 == rc ) {
                     const uint8_t * pf;
-                    rc = VCursorCellDataDirect( cur, 1, idx, NULL, (const void**)&pf, NULL, NULL );
-                    if ( 0 == rc ) {
+                    uint32_t row_len;
+                    rc = VCursorCellDataDirect( cur, 1, idx, NULL, (const void**)&pf, NULL, &row_len );
+                    if ( 0 == rc && row_len > 0 ) {
                         res = vdcd_get_platform_txt( *pf );
                     }
                 }
@@ -417,6 +418,31 @@ static void get_string_cell( char * buffer, size_t buffer_size, const VTable * t
             vdh_vcursor_release( rc, cur );
         }
     }
+}
+
+static uint32_t get_length_cell( const VTable * tab, int64_t row, const char * column, rc_t *prc )
+{
+    uint32_t result = 0;
+    if ( has_col( tab, column ) ) {
+        const VCursor * cur;
+        rc_t rc = VTableCreateCursorRead( tab, &cur );
+        if ( 0 == rc ) {
+            uint32_t idx;
+            rc = VCursorAddColumn( cur, &idx, column );
+            if ( 0 == rc ) {
+                rc = VCursorOpen( cur );
+                if ( 0 == rc ) {
+                    void const *dummy = 0;
+                    rc = VCursorCellDataDirect( cur, row, idx, NULL, &dummy, NULL, &result );
+                    (void)dummy;
+                }
+            }
+            vdh_vcursor_release( rc, cur );
+        }
+        assert(prc);
+        *prc = rc;
+    }
+    return result;
 }
 
 static uint64_t get_rowcount( const VTable * tbl ) {
@@ -670,10 +696,17 @@ static uint64_t get_tab_row_count( const VDatabase * db, const char * table_name
     return res;
 }
 
+static bool is_local_reference(const VTable * ref_tbl, int64_t row) {
+    /* local references have data in CMP_READ */
+    rc_t rc = 0;
+    uint32_t len = get_length_cell(ref_tbl, row, "CMP_READ", &rc);
+    return rc == 0 && len != 0;
+}
+
 static void get_species( char * buffer, size_t buffer_size, const VDatabase * db, const VDBManager *mgr ) {
     const VTable * ref_tbl;
     rc_t rc = VDatabaseOpenTableRead( db, &ref_tbl, "REFERENCE" );
-    if ( 0 == rc ) {
+    if ( 0 == rc && is_local_reference(ref_tbl, 1) == false ) {
         char seq_id[ 1024 ];
         seq_id[ 0 ] = 0;
         get_string_cell( seq_id, sizeof seq_id, ref_tbl, 1, "SEQ_ID" );

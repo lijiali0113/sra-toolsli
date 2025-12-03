@@ -42,6 +42,7 @@
 #include "parameters.hpp"
 #include "input.hpp"
 #include "stats.hpp"
+#include "../../../shared/toolkit.vers.h"
 
 static inline
 JSON_ostream &operator <<(JSON_ostream &s, HashResult64 const &v) {
@@ -105,7 +106,7 @@ struct DistanceStatEntry {
 
     DistanceStatEntry(DistanceStats::DistanceStat::Index i, uint64_t count, uint64_t total)
     : power(double(count)/total)
-    , length(i)
+    , length((unsigned)i)
     {}
 
     friend
@@ -122,7 +123,8 @@ static inline
 JSON_ostream &operator <<(JSON_ostream &out, DistanceStats::DistanceStat const &self) {
     using Index = DistanceStats::DistanceStat::Index;
     self.forEach([&](Index i, uint64_t count, uint64_t total) {
-        out << DistanceStatEntry{ i, count, total };
+        if (count > 0)
+            out << DistanceStatEntry{ i, count, total };
     });
     return out;
 }
@@ -132,7 +134,8 @@ JSON_ostream &operator <<(JSON_ostream &out, std::pair < DistanceStats::Distance
 {
     using Index = DistanceStats::DistanceStat::Index;
     self.first->forEach(*self.second, [&](Index i, uint64_t count, uint64_t total) {
-        out << DistanceStatEntry{ i, count, total };
+        if (count > 0)
+            out << DistanceStatEntry{ i, count, total };
     });
     return out;
 }
@@ -343,6 +346,18 @@ struct App {
                 std::cout << "usage: " << arguments.program << " [-f|--fingerprint] [-p|--progress <seconds:=60>] [-t|--multithreaded] [-m|--mmap] [-o|--output <path>] [<path> ...]" << std::endl;
                 exit(0);
             }
+            if (param == "version") {
+                int const rev = (TOOLKIT_VERS >>  0) & 0xFFFF;
+                int const min = (TOOLKIT_VERS >> 16) & 0xFF;
+                int const maj = (TOOLKIT_VERS >> 24) & 0xFF;
+                
+                std::cout << '\n' << arguments.program << " : 1.0.0 ( " << maj << '.' << min << '.' << rev
+#if _DEBUG || DEBUGGING
+                    << "-dev"
+#endif
+                 << " )\n" << std::endl;
+                exit(0);
+            }
             std::cerr << "error: Unrecognized parameter " << param << std::endl;
             exit(1);
         }
@@ -374,8 +389,7 @@ private:
         out << '{';
         if ( fingerprint )
         {
-            out << JSON_Member{"fingerprint"} << JSON_ostream::Compact{true} << stats.fingerprint << JSON_ostream::Compact{false}
-                << JSON_Member{"fingerprint-digest"} << stats.fingerprint.digest();
+            stats.fingerprint.canonicalForm(out);
         }
         else
         {
@@ -464,12 +478,11 @@ private:
 };
 
 int main(int argc, char * argv[]) {
-/*
+#if 0
     Input::runTests();
-    SeqHash::test();
- */
+    exit(0);
+#endif
     auto app = App{argc, argv};
 
     return app.run();
 }
-

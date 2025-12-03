@@ -37,6 +37,8 @@ using std::cerr;
 using std::cout;
 using std::endl;
 
+const char UsageDefaultName[] = "compute-coverage";
+
 #define RELEASE(type, obj) do { rc_t rc2 = type##Release(obj); \
     if (rc2 && !rc) { rc = rc2; } obj = NULL; } while (false)
 
@@ -72,7 +74,7 @@ void handle_help ()
     HelpVersion ( UsageDefaultName, KAppVersion () );
 }
 
-int run ( int argc, char const * argv [] ) {
+int run ( int argc, char * argv [] ) {
     bool TESTING = getenv ( "VDB_TEST" ) != NULL;
 //    const char * accession ( "SRR543323" );
    const char * accession = 0;
@@ -299,22 +301,8 @@ int run ( int argc, char const * argv [] ) {
     return rc == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
-extern "C"
+MAIN_DECL(argc, argv)
 {
-    const char UsageDefaultName[] = "compute-coverage";
-
-    rc_t CC UsageSummary (const char * progname)
-    {   // this is not used at this point, see handle_help()
-        return 0;
-    }
-
-    rc_t CC Usage ( struct Args const * args )
-    {   // this is not used at this point, see handle_help()
-        return 0;
-    }
-
-    rc_t CC KMain ( int argc, char *argv [] )
-    {
-        return run ( argc, (const char**)argv );
-    }
+    VDB::Application app(argc, argv);
+    return run ( argc, app.getArgV() );
 }

@@ -249,11 +249,11 @@ static void cleanUpSegments(std::string &sequence, std::vector<int> const &lengt
     std::string new_seq;
     {
         std::string_view view(sequence);
-        
+
         new_seq.reserve(totalReadLen);
         for (auto const &len : lengths) {
             auto const i = &len - &lengths[0];
-            
+
             if (aligned[i] == 0) {
                 new_seq.append(view.substr(0, len));
                 view = view.substr(len);
@@ -303,7 +303,7 @@ struct RWLock {
     }
 };
 
-int Input::getGroup(std::string const &named) {
+int Input::getGroup(std::string_view const &named) {
     static RWLock lock;
     auto const found = lock.reader([&]{
         for (unsigned i = 0; i < groups.size(); ++i) {
@@ -316,12 +316,12 @@ int Input::getGroup(std::string const &named) {
         return found;
     return lock.writer([&]{
         auto i = (int)groups.size();
-        groups.push_back(named);
+        groups.emplace_back(std::string{named});
         return i;
     });
 }
 
-int Input::getReference(std::string const &named) {
+int Input::getReference(std::string_view const &named) {
     static RWLock lock;
     auto const found = lock.reader([&]{
         for (unsigned i = 0; i < references.size(); ++i) {
@@ -334,7 +334,7 @@ int Input::getReference(std::string const &named) {
         return found;
     return lock.writer([&]{
         auto i = (int)references.size();
-        references.push_back(named);
+        references.emplace_back(std::string{named});
         return i;
     });
 }
@@ -353,7 +353,13 @@ struct BasicSource: public Input::Source {
     uint64_t lines = 0;
     int fh = -1;
     uint8_t *buffer;
-    size_t cur = 0, next = 0, block = 0, size = 0, bmax = 0;
+    std::string const *put_back = nullptr;
+    std::string putback_buffer;
+    size_t cur = 0;   ///< current read position
+    size_t next = 0;  ///< start of next line
+    size_t block = 0; ///< I/O block size
+    size_t size = 0;  ///< actual size of valid content
+    size_t bmax = 0;  ///< allocated size of buffer
     bool isEof = false;
     bool use_mmap = false;
     int lastReported = 0;
@@ -387,53 +393,70 @@ struct BasicSource: public Input::Source {
         isEof = true;
         return false;
     }
-    /// get the current line, advancing if needed, and trimming whitespace
-    std::string_view peek() {
-        if (next > cur)
-            goto CURRENT_LINE;
-
-        for ( ; ; ) {
-            while (next < size) {
-                if (buffer[next++] == '\n')
-                    goto CURRENT_LINE;
-            }
-            if (fh < 0) {
-                isEof = true;
-                return std::string_view();
-            }
-            if (cur >= block) {
-                auto const blk = cur / block;
-                auto dst = &buffer[0];
-                auto src = &buffer[blk * block];
-                auto const end = &buffer[size];
-                auto const shift = src - dst;
-
-                size -= shift;
-                cur -= shift;
-                next -= shift;
-                while (src < end)
-                    *dst++ = *src++;
-            }
-            if (!fill())
-                return std::string_view();
+    /// the current line, advancing if needed
+    std::string_view peek_advance() {
+        auto const ci = cur < size ? std::string_view{reinterpret_cast<char *>(buffer + cur), size - cur} : std::string_view{};;
+        auto const at = ci.find('\n');
+        if (at != ci.npos) {
+            auto const old = next;
+            next = cur + at + 1;
+            if (old != next)
+                ++lines; ///< current line number (1-based)
+            return ci.substr(0, at);
         }
-    CURRENT_LINE:
-        auto end = next - 1;
-        while (end != cur && isspace(buffer[end - 1]))
-            --end;
-        return end != cur ? std::string_view((char *)&buffer[cur], (next - 1) - cur) : std::string_view();
+        if (fh < 0) {
+            isEof = true;
+            return std::string_view{};
+        }
+        if (cur >= block) {
+            auto const blk = cur / block;
+            auto const dst = &buffer[0];
+            auto const src = &buffer[blk * block];
+            auto const end = &buffer[size];
+            auto const shift = src - dst;
+
+            size -= shift;
+            cur -= shift;
+            next -= shift;
+            std::copy(src, end, dst);
+        }
+        return fill() ? peek_advance() : std::string_view{};
+    }
+    static std::string_view trimWhitespace(std::string_view str) {
+        while (!str.empty() && std::isspace(str.front()))
+            str.remove_prefix(1);
+        while (!str.empty() && std::isspace(str.back()))
+            str.remove_suffix(1);
+        return str;
+    }
+    /// get the current line, advancing if needed
+    std::string_view peek() {
+        return peek_advance();
+    }
+    void putback(std::string const &str) {
+        assert(put_back == nullptr);
+        assert(!str.empty());
+        putback_buffer = str;
+        put_back = &putback_buffer;
     }
     /// Get next line, skipping empty lines.
     std::string getline(bool skipEmpty = true) {
+        if (put_back) {
+            auto const curline = *put_back;
+            put_back = nullptr;
+            return curline;
+        }
         cur = next;
         auto const curline = peek();
-        if (curline.empty()) {
-            if (isEof)
-                throw std::ios_base::failure("no input");
-            if (skipEmpty)
-                return getline();
-        }
+        if (curline.empty() && isEof)
+            throw std::ios_base::failure("no input");
+        if (skipEmpty && trimWhitespace(curline).empty())
+            return getline(skipEmpty);
         return std::string(curline);
+    }
+    std::string getlineTrimmed(bool skipEmpty = true) {
+        auto const line = getline(skipEmpty);
+        return std::string{ trimWhitespace(line) };
     }
     ~BasicSource() {
         if (fh > 0)
@@ -580,8 +603,10 @@ struct BasicSource: public Input::Source {
                 catch (std::ios_base::failure const &e) {
                     ((void)e);
                 }
-                if (parsed && starts.size() != lengths.size())
+                if (parsed && starts.size() != lengths.size()) {
                     parsed = false;
+                    starts.resize(0);
+                }
                 if (!parsed) {
                     if (group != nullptr)
                         throw ParseError::not_Unaligned;
@@ -606,8 +631,10 @@ struct BasicSource: public Input::Source {
                 catch (std::ios_base::failure const &e) {
                     ((void)e);
                 }
-                if (parsed && types.size() != lengths.size())
+                if (parsed && types.size() != lengths.size()) {
                     parsed = false;
+                    types.resize(0);
+                }
                 if (!parsed) {
                     if (group != nullptr)
                         throw ParseError::not_Unaligned;
@@ -628,8 +655,10 @@ struct BasicSource: public Input::Source {
                 catch (std::ios_base::failure const &e) {
                     ((void)e);
                 }
-                if (parsed && aligned.size() != lengths.size())
+                if (parsed && aligned.size() != lengths.size()) {
                     parsed = false;
+                    aligned.resize(0);
+                }
                 if (!parsed) {
                     if (group != nullptr)
                         throw ParseError::not_Unaligned;
@@ -674,6 +703,9 @@ struct BasicSource: public Input::Source {
         default:
             throw ParseError::not_Unaligned;
         }
+        if (group)
+            result.group = Input::getGroup(*group);
+        
         if (read.aligned) {
             REPORT("Aligned from SEQUENCE");
         }
@@ -724,11 +756,11 @@ struct BasicSource: public Input::Source {
                 ((void)e);
             }
 
-            read.reference = Input::getReference(std::string(flds.part[1]));
+            read.reference = Input::getReference(flds.part[1]);
             {
                 Input result{std::string(flds.part[0]), {read}};
                 if (group)
-                    result.group = Input::getGroup(std::string(*group));
+                    result.group = Input::getGroup(*group);
 
                 REPORT("Alignment");
                 return result;
@@ -799,29 +831,31 @@ struct BasicSource: public Input::Source {
         result.reads.emplace_back(std::move(read));
         return result;
     }
-    Input readFASTQ() {
+    Input readFASTQ(std::string const &defline) {
         auto const start = lines;
-        auto const defline = std::string{peek()};
-        auto &&defline_start = defline.front();
-        auto nextline = getline(false);
+        auto const defline_start = defline.front();
+        auto nextline = getlineTrimmed(false);
         auto seq = nextline;
         try {
-            nextline = getline();
+            nextline = getlineTrimmed();
             while (nextline.front() != defline_start && nextline.front() != '+') {
                 seq.append(nextline.data(), nextline.size());
-                nextline = getline();
+                nextline = getlineTrimmed();
             }
         }
         catch (std::ios_base::failure const &e) {
             goto EndOfFile;
             ((void)(e));
         }
-        if (nextline.front() == '+') {
+        if (nextline.front() != '+') {
+            putback(nextline);
+        }
+        else {
             try {
-                auto qual = getline(!seq.empty());
+                auto qual = getlineTrimmed(!seq.empty());
 
                 while (qual.size() < seq.size()) {
-                    nextline = getline();
+                    nextline = getlineTrimmed();
                     qual.append(nextline.data(), nextline.size());
                 }
                 if (qual.size() != seq.size())
@@ -851,7 +885,6 @@ struct BasicSource: public Input::Source {
     READ_LINE_LOOP:
         for ( ; ; ) {
             auto const &line = getline();
-            ++lines;
             for (auto ch : line) {
                 if (isspace(ch))
                     continue;
@@ -878,11 +911,18 @@ struct BasicSource: public Input::Source {
             // it's a SAM header line
             Input::SAM_HeaderLine(line);
         }
-        auto const line = peek();
+        auto const line = peek(); ///< NOTE: this is a `peek` of the value returned by the `getline` in the loop above. `peek` must not be used without a corresponding `getline`.
+        auto const trimmed = trimWhitespace(line);
         ++records;
 
-        if (line[0] == '@' || line[0] == '>') {
-            result = readFASTQ();
+        if (trimmed[0] == '@' || trimmed[0] == '>') {
+            result = readFASTQ(std::string{ trimmed });
+        }
+        else if (trimmed[0] == '+' ) {
+            // happens in qualities-only files
+            // discard this line and the next
+            std::cerr << lines << ": warning: unparsable input\n" << line << std::endl;
+            (void)getline();
         }
         else {
             auto const flds = Delimited(line, '\t');
@@ -945,8 +985,8 @@ struct ThreadedSource : public Input::Source {
     std::condition_variable condEmpty, condFull;
     uint64_t enq = 0;
     uint64_t deq = 0;
-    bool volatile done = false;
-    bool volatile running = false;
+    std::atomic_bool done = false;
+    std::atomic_bool running = false;
     unsigned quemax = 16;
     std::thread th;
 
@@ -1007,7 +1047,7 @@ struct ThreadedSource : public Input::Source {
                 std::cerr << "Not done; enqueued " << enq << ", dequeued " << deq << " records." << std::endl;
             }
             else {
-                std::cerr << "Done; dequeued " << deq << " records." << std::endl;
+                fprintf(stderr, "Done; dequeued %lu records.\n", (unsigned long)deq);
             }
             throw std::ios_base::failure("end of file");
         }
@@ -1032,14 +1072,15 @@ struct ThreadedSource : public Input::Source {
                 self->condEmpty.notify_one();
             }
             catch (std::ios_base::failure const &e) {
-                self->done = true;
-                self->condEmpty.notify_one();
-                if (self->source.eof())
-                    std::cerr << "Reader thread is done; enqueued " << self->enq << " records." << std::endl;
-                else
+                if (!self->source.eof())
                     std::cerr << "Reader thread caught exception: " << e.what() << std::endl;
                 break;
             }
+        }
+        self->done = true;
+        self->condEmpty.notify_one();
+        if (self->source.eof()) {
+            fprintf(stderr, "Reader thread is done; enqueued %lu records.\n", (unsigned long)self->enq);
         }
         self->running = false;
     }
@@ -1104,6 +1145,18 @@ static void Input_test1a() {
     assert(reads[1].type == Input::ReadType::technical);
 }
 
+static void Input_test1b() {
+    auto src = StringSource(
+                            "GTCTGGTGGTCTCTATTCTCTTCATGATCTTCTTCTATAAGAAGTTTGGTCTGATCGCGACGTCCGCGCTGCTGGCAAACCTTGTGATGATCATCGGCATTATGTCCCTGCTGCCGGGGGCGACGCTGACCATGCCGGGTATCGCAGGTATCGTTCTGACTCTTGCGGTGGCGGTCGACGCCAACGTACTGATAAACGAACGTATCAAAGAAGAGTTGAGTAACGGTCGCTCTGTGCAACAGGCGATTGAAGAAGGCTATAAAGGGGCGTTCAGCTCCATCTTCGATGCGAACGTAGCAANGCACGGGTGCCGACAATAGCGGTAAACATCGACGTTGCAACACCGATACCGGTTGTAATTGCAAAGCCTTTGATCGCGCCAGTACCCACTGCATACAGGATAAGAACCTTAATCAGTGTTGTTACGTTCGCATCGAAGATGGAGCTGAACGCCCCTTTATAGCCTTCTTCAATCGCCTGTTGCACAGAGCGACCGTTACTCAACTCTTCTTTGATACGTTCGTTTATCAGTACGTTGGCGTCGACCGCCACCGCAAGAGTCAGAACGATACCTGCGATACCCGGCATGGTCAGCGTCGC\t300, 300\t0, 300\tSRA_READ_TYPE_BIOLOGICAL, SRA_READ_TYPE_BIOLOGICAL\t11\n"
+                            );
+    auto const &spot = src.get();
+    auto const &reads = spot.reads;
+    assert(reads.size() == 2);
+    assert(spot.sequence.size() == 600);
+    assert(reads[0].type == Input::ReadType::biological);
+    assert(reads[1].type == Input::ReadType::biological);
+}
+
 static void Input_test2() {
     auto src = StringSource(R"(
 # the previous line was empty and this line is a comment
@@ -1133,6 +1186,7 @@ void Input::runTests() {
     Input_test2();
     Input_test1();
     Input_test1a();
+    Input_test1b();
     Input_test3();
 }
 #endif

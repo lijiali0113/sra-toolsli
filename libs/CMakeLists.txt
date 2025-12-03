@@ -26,6 +26,7 @@ set( CMAKE_POSITION_INDEPENDENT_CODE True )
 add_compile_definitions( _LIBRARY )
 
 add_subdirectory(kxml)
+add_subdirectory(kapp)
 add_subdirectory(loader)
 add_subdirectory(vdb-sqlite)
 add_subdirectory(ngs-vdb)
